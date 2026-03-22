@@ -1,50 +1,40 @@
+from __future__ import annotations
+
 import argparse
 import json
 
 import pytest
 
-from data.users_credentials import organizations_user
-from services.api_dashboards_service import ApiDashboardsService
-from services.api_organizations_service import ApiOrganizationsService
-from services.api_users_service import ApiUsersService
+from tests.context import TestContext
+from tests.resource_manager import prepare_session_resources, safe_cleanup
 
 
-def prepare_resources() -> dict:
-    prepared = {}
-
-    org_response, org_id = ApiOrganizationsService.create_new_organization()
-    prepared["organization"] = {
-        "status_code": org_response.status_code,
-        "org_id": org_id,
+def context_to_dict(context: TestContext) -> dict:
+    return {
+        "organization": {
+            "org_id": context.organizations.org_id,
+            "org_name": context.organizations.org_name,
+        },
+        "dashboard": {
+            "folder_uid": context.dashboards.folder_uid,
+            "dashboard_uid": context.dashboards.dashboard_uid,
+            "title": context.dashboards.title,
+        },
+        "users": {
+            "existing_user_id": context.users.existing_user_id,
+            "low_access_user_id": context.users.low_access_user_id,
+            "organizations_user_id": context.users.organizations_user_id,
+        },
     }
 
-    folder_response, folder_uid = ApiDashboardsService.create_folder()
-    prepared["folder"] = {
-        "status_code": folder_response.status_code,
-        "folder_uid": folder_uid,
-    }
 
-    dashboard_response, dashboard_uid = ApiDashboardsService.create_dashboard(folder_uid=folder_uid)
-    prepared["dashboard"] = {
-        "status_code": dashboard_response.status_code,
-        "dashboard_uid": dashboard_uid,
-    }
+def prepare_resources(cleanup: bool = False) -> dict:
+    context = TestContext()
+    prepare_session_resources(context)
+    prepared = context_to_dict(context)
 
-    user_response, user_id = ApiUsersService.create_api_user(organizations_user)
-    prepared["organization_user"] = {
-        "status_code": user_response.status_code,
-        "user_id": user_id,
-        "login": organizations_user["login"],
-    }
-
-    add_response, added_user_id = ApiOrganizationsService.add_user_in_organization(
-        org_id=int(org_id),
-        body={"loginOrEmail": organizations_user["login"], "role": "Editor"},
-    )
-    prepared["org_membership"] = {
-        "status_code": add_response.status_code,
-        "user_id": added_user_id,
-    }
+    if cleanup:
+        safe_cleanup(context)
 
     return prepared
 
@@ -62,7 +52,7 @@ def run_tests(marker: str | None = None, keyword: str | None = None) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="PythonTests CLI")
+    parser = argparse.ArgumentParser(description="testing_xuexi CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     run_parser = subparsers.add_parser("run", help="Run pytest suites")
@@ -75,7 +65,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="pytest -k expression",
     )
 
-    subparsers.add_parser("prepare", help="Prepare base API test data and print created ids")
+    prepare_parser = subparsers.add_parser(
+        "prepare",
+        help="Prepare base API test data and print created ids",
+    )
+    prepare_parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="Clean created resources after printing ids",
+    )
 
     return parser
 
@@ -88,7 +86,7 @@ def main() -> int:
         return run_tests(marker=args.marker, keyword=args.keyword)
 
     if args.command == "prepare":
-        prepared = prepare_resources()
+        prepared = prepare_resources(cleanup=args.cleanup)
         print(json.dumps(prepared, indent=2, ensure_ascii=False))
         return 0
 
