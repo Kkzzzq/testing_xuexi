@@ -1,9 +1,10 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 
 @dataclass
 class UserContext:
-    created_user_id: int | None = None
     existing_user_id: int | None = None
     low_access_user_id: int | None = None
     organizations_user_id: int | None = None
