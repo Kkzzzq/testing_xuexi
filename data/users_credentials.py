@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import random
 
 
-def make_random_credentials(prefix: str = "Sergey") -> dict:
+def make_random_credentials(prefix: str = "Sergey") -> dict[str, str]:
     rand = random.randint(1000, 9999)
     return {
         "name": f"{prefix}{rand}",
@@ -10,8 +12,6 @@ def make_random_credentials(prefix: str = "Sergey") -> dict:
         "password": "password123",
     }
 
-
-credentials = make_random_credentials("Sergey")
 
 existing_credentials = {
     "name": "SergeySergey",
