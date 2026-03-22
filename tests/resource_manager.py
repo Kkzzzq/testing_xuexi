@@ -5,7 +5,7 @@ import os
 import shutil
 
 from config import settings
-from data.organizations_data import test_organizations_body
+from data.organizations_data import make_test_organization_body
 from data.users_credentials import (
     existing_credentials,
     low_access_credentials,
@@ -36,36 +36,70 @@ def ensure_runtime_data_files() -> None:
             logging.info("%s already exists, skip template copy", display_name)
 
 
+def _delete_user_by_login_if_exists(login: str) -> None:
+    try:
+        user_id = ApiUsersService.find_user_by_login(login)
+        if user_id:
+            ApiUsersService.delete_api_user(user_id)
+            logging.info("Deleted leftover user before setup: %s (id=%s)", login, user_id)
+    except Exception as exc:
+        logging.warning("Failed to delete leftover user %s before setup: %s", login, exc)
+
+
+def _cleanup_known_users_before_setup() -> None:
+    for login in [
+        low_access_credentials["login"],
+        organizations_user["login"],
+        existing_credentials["login"],
+    ]:
+        _delete_user_by_login_if_exists(login)
+
+
 def prepare_session_resources(test_context: TestContext) -> TestContext:
     ensure_runtime_data_files()
+    _cleanup_known_users_before_setup()
 
-    response, org_id = ApiOrganizationsService.create_new_organization()
-    validate_status_code_and_body(response, CreateOrganizationSchema, 200)
-    test_context.organizations.org_id = int(org_id)
-    test_context.organizations.org_name = test_organizations_body["name"]
+    try:
+        organization_body = make_test_organization_body()
+        response, org_id = ApiOrganizationsService.create_new_organization(body=organization_body)
+        validate_status_code_and_body(response, CreateOrganizationSchema, 200)
+        test_context.organizations.org_id = int(org_id)
+        test_context.organizations.org_name = organization_body["name"]
 
-    response, folder_uid = ApiDashboardsService.create_folder()
-    assert response.status_code == 200, f"Create folder failed: {response.text}"
-    test_context.dashboards.folder_uid = folder_uid
+        response, folder_uid = ApiDashboardsService.create_folder()
+        assert response.status_code == 200, f"Create folder failed: {response.text}"
+        test_context.dashboards.folder_uid = folder_uid
 
-    response, dashboard_uid = ApiDashboardsService.create_dashboard(folder_uid=folder_uid)
-    assert response.status_code == 200, f"Create dashboard failed: {response.text}"
-    test_context.dashboards.dashboard_uid = dashboard_uid
+        response, dashboard_uid = ApiDashboardsService.create_dashboard(folder_uid=folder_uid)
+        assert response.status_code == 200, f"Create dashboard failed: {response.text}"
+        test_context.dashboards.dashboard_uid = dashboard_uid
 
-    response, low_access_user_id = ApiUsersService.create_api_user(low_access_credentials)
-    assert response.status_code == 200, f"Create low-access user failed: {response.text}"
-    test_context.users.low_access_user_id = low_access_user_id
-    ApiOrganizationsService.delete_user_from_org(userid=low_access_user_id)
+        response, low_access_user_id = ApiUsersService.create_api_user(low_access_credentials)
+        assert response.status_code == 200, f"Create low-access user failed: {response.text}"
+        test_context.users.low_access_user_id = low_access_user_id
 
-    response, org_user_id = ApiUsersService.create_api_user(organizations_user)
-    assert response.status_code == 200, f"Create organization user failed: {response.text}"
-    test_context.users.organizations_user_id = org_user_id
+        try:
+            ApiOrganizationsService.delete_user_from_org(userid=low_access_user_id)
+        except Exception as exc:
+            logging.warning(
+                "Failed to remove low-access user %s from default org: %s",
+                low_access_user_id,
+                exc,
+            )
 
-    response, existing_user_id = ApiUsersService.create_api_user(existing_credentials)
-    assert response.status_code == 200, f"Create existing user failed: {response.text}"
-    test_context.users.existing_user_id = existing_user_id
+        response, org_user_id = ApiUsersService.create_api_user(organizations_user)
+        assert response.status_code == 200, f"Create organization user failed: {response.text}"
+        test_context.users.organizations_user_id = org_user_id
 
-    return test_context
+        response, existing_user_id = ApiUsersService.create_api_user(existing_credentials)
+        assert response.status_code == 200, f"Create existing user failed: {response.text}"
+        test_context.users.existing_user_id = existing_user_id
+
+        return test_context
+
+    except Exception:
+        safe_cleanup(test_context)
+        raise
 
 
 def safe_cleanup(test_context: TestContext) -> None:
