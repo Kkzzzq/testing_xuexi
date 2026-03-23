@@ -11,9 +11,18 @@ class DBService:
     @staticmethod
     @db_error_handler
     def connect():
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, timeout=5)
+        conn.execute("PRAGMA busy_timeout = 5000")
         logging.info(f"Connected to {DB_PATH}")
         return conn
+
+    @staticmethod
+    def _checkpoint(connection):
+        try:
+            connection.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            logging.info("Executed PRAGMA wal_checkpoint(PASSIVE)")
+        except sqlite3.DatabaseError as exc:
+            logging.info("wal_checkpoint skipped: %s", exc)
 
     @staticmethod
     @db_error_handler
@@ -38,8 +47,9 @@ class DBService:
                 (login, email, name, password, version, org_id, is_admin, created, updated),
             )
             logging.info(
-                f"Created user {login} with parameters "
-                f"{email, name, password, version, org_id, is_admin, created, updated}"
+                "Created user %s with parameters %s",
+                login,
+                (email, name, password, version, org_id, is_admin, created, updated),
             )
 
     @staticmethod
@@ -47,6 +57,7 @@ class DBService:
     def find_user_by_email(email, retries=10, delay=0.5):
         for attempt in range(1, retries + 1):
             with DBService.connect() as connection:
+                DBService._checkpoint(connection)
                 cursor = connection.execute(
                     "SELECT login, email, name FROM user WHERE email = ?",
                     (email,),
@@ -70,20 +81,30 @@ class DBService:
 
     @staticmethod
     @db_error_handler
-    def find_user_by_login(login):
-        with DBService.connect() as connection:
-            cursor = connection.execute(
-                "SELECT id, login, email, name FROM user WHERE login = ?",
-                (login,),
+    def find_user_by_login(login, retries=10, delay=0.5):
+        for attempt in range(1, retries + 1):
+            with DBService.connect() as connection:
+                DBService._checkpoint(connection)
+                cursor = connection.execute(
+                    "SELECT id, login, email, name FROM user WHERE login = ?",
+                    (login,),
+                )
+                row = cursor.fetchone()
+
+            if row is not None:
+                logging.info("Found user by login %s: %s", login, row)
+                return row
+
+            logging.info(
+                "User with login %s not found yet (attempt %s/%s)",
+                login,
+                attempt,
+                retries,
             )
-            row = cursor.fetchone()
+            time.sleep(delay)
 
-        if row is not None:
-            logging.info("Found user by login %s: %s", login, row)
-        else:
-            logging.info("User with login %s not found", login)
-
-        return row
+        logging.warning("User with login %s was not found after %s attempts", login, retries)
+        return None
 
     @staticmethod
     @db_error_handler
