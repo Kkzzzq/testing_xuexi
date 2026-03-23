@@ -1,5 +1,0 @@
-[32mINFO    [0m root:utils.py:52 Status=200, body={'id': 6, 'uid': 'afguy69kqt9mod', 'message': 'User created'}, url=http://grafana:3000/api/admin/users
-[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'id': 6, 'uid': 'afguy69kqt9mod', 'message': 'User created'}
-[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'User password updated'}, url=http://grafana:3000/api/admin/users/6/password
-[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'message': 'User password updated'}
-[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'User deleted'}, url=http://grafana:3000/api/admin/users/6

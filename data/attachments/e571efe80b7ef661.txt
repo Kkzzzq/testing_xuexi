@@ -1,0 +1,13 @@
+[32mINFO    [0m root:utils.py:52 Status=404, body={'message': 'user not found'}, url=http://grafana:3000/api/users/lookup?loginOrEmail=LowAccess
+[32mINFO    [0m root:utils.py:52 Status=404, body={'message': 'user not found'}, url=http://grafana:3000/api/users/lookup?loginOrEmail=Organization
+[32mINFO    [0m root:utils.py:52 Status=404, body={'message': 'user not found'}, url=http://grafana:3000/api/users/lookup?loginOrEmail=SergeySergey
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'Organization created', 'orgId': 2}, url=http://grafana:3000/api/orgs
+[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'message': 'Organization created', 'orgId': 2}
+[32mINFO    [0m root:utils.py:52 Status=200, body={'id': 1, 'uid': 'bfguykr44ogzke', 'orgId': 1, 'title': 'Folder for API Test', 'url': '/dashboards/f/bfguykr44ogzke/folder-for-api-test', 'hasAcl': False, 'canSave': True, 'canEdit': True, 'canAdmin': True, 'canDelete': True, 'createdBy': 'admin', 'created': '2026-03-23T06:34:36Z', 'updatedBy': 'admin', 'updated': '2026-03-23T06:34:36Z', 'version': 1}, url=http://grafana:3000/api/folders
+[32mINFO    [0m root:utils.py:52 Status=200, body={'folderUid': 'bfguykr44ogzke', 'id': 2, 'slug': 'dashboard-for-api', 'status': 'success', 'uid': 'c68460c2-3da6-4b55-af1e-e1ee90baf531', 'url': '/d/c68460c2-3da6-4b55-af1e-e1ee90baf531/dashboard-for-api', 'version': 1}, url=http://grafana:3000/api/dashboards/db
+[32mINFO    [0m root:utils.py:52 Status=200, body={'id': 2, 'uid': 'cfguykr7y0w00f', 'message': 'User created'}, url=http://grafana:3000/api/admin/users
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'User removed from organization'}, url=http://grafana:3000/api/orgs/1/users/2
+[32mINFO    [0m root:utils.py:52 Status=200, body={'id': 3, 'uid': 'dfguykr9ogcn4d', 'message': 'User created'}, url=http://grafana:3000/api/admin/users
+[32mINFO    [0m root:utils.py:52 Status=200, body={'id': 4, 'uid': 'cfguykrapwttsf', 'message': 'User created'}, url=http://grafana:3000/api/admin/users
+[32mINFO    [0m root:utils.py:52 Status=401, body={'extra': None, 'message': 'Invalid username or password', 'messageId': 'password-auth.failed', 'statusCode': 401, 'traceID': ''}, url=http://grafana:3000/api/dashboards/uid/c68460c2-3da6-4b55-af1e-e1ee90baf531
+[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'extra': None, 'message': 'Invalid username or password', 'messageId': 'password-auth.failed', 'statusCode': 401, 'traceID': ''}

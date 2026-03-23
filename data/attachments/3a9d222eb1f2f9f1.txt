@@ -1,0 +1,39 @@
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:114 Deleted user testDbUser
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 1/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 2/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 3/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 4/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 5/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 6/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 7/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 8/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 9/10)
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:71 User testdbuser@test.com not found yet (attempt 10/10)
+[33mWARNING [0m root:db_service.py:79 User testdbuser@test.com was not found after 10 attempts
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'User deleted'}, url=http://grafana:3000/api/admin/users/4
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'User deleted'}, url=http://grafana:3000/api/admin/users/2
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'User deleted'}, url=http://grafana:3000/api/admin/users/3
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'Dashboard Dashboard for API deleted', 'title': 'Dashboard for API', 'uid': 'c68460c2-3da6-4b55-af1e-e1ee90baf531'}, url=http://grafana:3000/api/dashboards/uid/c68460c2-3da6-4b55-af1e-e1ee90baf531
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'Folder deleted'}, url=http://grafana:3000/api/folders/bfguykr44ogzke
+[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'Organization deleted'}, url=http://grafana:3000/api/orgs/2
