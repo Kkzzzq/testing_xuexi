@@ -1,2 +1,0 @@
-[32mINFO    [0m root:db_service.py:15 Connected to /var/lib/grafana/grafana.db
-[32mINFO    [0m root:db_service.py:57 Found user by email testdbuser@test.com: ('testDbUser', 'testdbuser@test.com', 'testDb')

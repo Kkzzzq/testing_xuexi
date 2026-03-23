@@ -1,0 +1,3 @@
+[32mINFO    [0m root:db_service.py:16 Connected to /var/lib/grafana/grafana.db
+[32mINFO    [0m root:db_service.py:23 Executed PRAGMA wal_checkpoint(PASSIVE)
+[32mINFO    [0m root:db_service.py:68 Found user by email testdbuser@test.com: ('testDbUser', 'testdbuser@test.com', 'testDb')

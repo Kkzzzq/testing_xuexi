@@ -1,2 +1,0 @@
-[32mINFO    [0m root:utils.py:52 Status=404, body={'message': 'Dashboard not found'}, url=http://grafana:3000/api/dashboards/uid/8d6406af-10b6-48b8-a3b5-9d8fc9b0eb39-404
-[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'message': 'Dashboard not found'}
