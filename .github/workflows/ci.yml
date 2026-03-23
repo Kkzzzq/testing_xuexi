@@ -34,7 +34,7 @@ jobs:
           rm -rf allure-results allure-report || true
 
       - name: Run tests with Docker Compose
-        run: docker compose up --build --abort-on-container-exit --exit-code-from test-runner
+        run: docker compose up --build --exit-code-from test-runner
 
       - name: Show container logs on failure
         if: failure()
