@@ -19,7 +19,36 @@ services:
       - grafana-data:/var/lib/grafana
       - ./allure-results:/app/allure-results
       - ./allure-report:/app/allure-report
-    command: ["/bin/sh", "/app/scripts/run_tests.sh"]
+    command:
+      - /bin/sh
+      - -c
+      - |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.request
+
+          url = "http://grafana:3000/api/health"
+
+          for attempt in range(60):
+              try:
+                  with urllib.request.urlopen(url, timeout=3) as response:
+                      payload = json.loads(response.read().decode("utf-8"))
+
+                  if payload.get("database") == "ok":
+                      print("Grafana is ready")
+                      break
+
+                  print(f"Grafana health response: {payload}")
+              except Exception as exc:
+                  print(f"Waiting for Grafana... attempt {attempt + 1}/60: {exc}")
+
+              time.sleep(2)
+          else:
+              raise SystemExit("Grafana did not become ready in time")
+          PY
+
+          pytest /app/tests --alluredir=/app/allure-results
 
 volumes:
   grafana-data:
