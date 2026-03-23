@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import time
 from datetime import datetime
 
 from config.settings import DB_PATH
@@ -29,6 +30,7 @@ class DBService:
     ):
         created = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         updated = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         with DBService.connect() as connection:
             connection.execute(
                 "INSERT INTO user (login, email, name, password, version, org_id, is_admin, created, updated) "
@@ -42,14 +44,29 @@ class DBService:
 
     @staticmethod
     @db_error_handler
-    def find_user_by_email(email):
-        with DBService.connect() as connection:
-            cursor = connection.execute(
-                "SELECT login, email, name FROM user WHERE email = ?",
-                (email,),
+    def find_user_by_email(email, retries=10, delay=0.5):
+        for attempt in range(1, retries + 1):
+            with DBService.connect() as connection:
+                cursor = connection.execute(
+                    "SELECT login, email, name FROM user WHERE email = ?",
+                    (email,),
+                )
+                row = cursor.fetchone()
+
+            if row is not None:
+                logging.info("Found user by email %s: %s", email, row)
+                return row
+
+            logging.info(
+                "User %s not found yet (attempt %s/%s)",
+                email,
+                attempt,
+                retries,
             )
-            logging.info(f"Found user {email} with parameters {email}")
-            return cursor.fetchone()
+            time.sleep(delay)
+
+        logging.warning("User %s was not found after %s attempts", email, retries)
+        return None
 
     @staticmethod
     @db_error_handler
@@ -59,8 +76,14 @@ class DBService:
                 "SELECT id, login, email, name FROM user WHERE login = ?",
                 (login,),
             )
-            logging.info(f"Found user by login {login}")
-            return cursor.fetchone()
+            row = cursor.fetchone()
+
+        if row is not None:
+            logging.info("Found user by login %s: %s", login, row)
+        else:
+            logging.info("User with login %s not found", login)
+
+        return row
 
     @staticmethod
     @db_error_handler
