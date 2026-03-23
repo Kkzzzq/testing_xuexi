@@ -1,0 +1,2 @@
+[32mINFO    [0m root:utils.py:52 Status=403, body={'accessErrorId': 'ACE7883181336', 'message': "You'll need additional permissions to perform this action. Permissions needed: dashboards:read", 'title': 'Access denied'}, url=http://grafana:3000/api/dashboards/uid/ebd659c5-863f-487d-9ac8-5602fc78b980
+[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'accessErrorId': 'ACE7883181336', 'message': "You'll need additional permissions to perform this action. Permissions needed: dashboards:read", 'title': 'Access denied'}
