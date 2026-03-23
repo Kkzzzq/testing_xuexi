@@ -19,12 +19,4 @@ GRAFANA_LOW_ACCESS_USER = "LowAccess"
 GRAFANA_LOW_ACCESS_PASSWORD = "test"
 LOW_ACCESS = (GRAFANA_LOW_ACCESS_USER, GRAFANA_LOW_ACCESS_PASSWORD)
 
-USERS_PATH = str(DATA_DIR / "users.json")
-DASHBOARDS_PATH = str(DATA_DIR / "dashboards.json")
-ORGANIZATIONS_PATH = str(DATA_DIR / "organizations.json")
-
-USERS_TEMPLATE_PATH = str(DATA_DIR / "users.template.json")
-DASHBOARDS_TEMPLATE_PATH = str(DATA_DIR / "dashboards.template.json")
-ORGANIZATIONS_TEMPLATE_PATH = str(DATA_DIR / "organizations.template.json")
-
 ALLURE_RESULTS_DIR = "allure-results"
