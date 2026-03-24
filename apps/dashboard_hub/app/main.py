@@ -11,6 +11,7 @@ from app.crud import (
     create_share_link,
     create_subscription,
     dashboard_exists,
+    delete_share_link,
     delete_subscription,
     get_dashboard_summary,
     get_share_link,
@@ -18,12 +19,20 @@ from app.crud import (
 )
 from app.database import get_db
 from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, metrics_response
-from app.schemas import DashboardSummaryOut, ShareLinkCreate, ShareLinkOut, SubscriptionCreate, SubscriptionOut, SubscriptionsListOut
+from app.schemas import (
+    DashboardSummaryOut,
+    ShareLinkCreate,
+    ShareLinkOut,
+    SubscriptionCreate,
+    SubscriptionOut,
+    SubscriptionsListOut,
+)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.init_db import main as init_db
+
     init_db()
     yield
 
@@ -57,7 +66,13 @@ def create_subscription_api(payload: SubscriptionCreate, db: Session = Depends(g
     if not dashboard_exists(payload.dashboard_uid):
         raise HTTPException(status_code=404, detail="dashboard not found")
     try:
-        row = create_subscription(db, payload.dashboard_uid, payload.user_login, payload.channel, payload.cron)
+        row = create_subscription(
+            db,
+            payload.dashboard_uid,
+            payload.user_login,
+            payload.channel,
+            payload.cron,
+        )
     except IntegrityError:
         raise HTTPException(status_code=409, detail="subscription already exists") from None
     return row
@@ -93,6 +108,14 @@ def get_share_link_api(token: str, db: Session = Depends(get_db)):
     if payload == "expired":
         raise HTTPException(status_code=410, detail="share link expired")
     return payload
+
+
+@app.delete("/api/v1/share-links/{token}")
+def delete_share_link_api(token: str, db: Session = Depends(get_db)):
+    row = delete_share_link(db, token)
+    if not row:
+        raise HTTPException(status_code=404, detail="share link not found")
+    return {"status": "deleted", "token": token}
 
 
 @app.get("/api/v1/dashboards/{dashboard_uid}/summary", response_model=DashboardSummaryOut)
