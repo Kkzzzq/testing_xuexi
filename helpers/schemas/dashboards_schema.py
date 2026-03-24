@@ -1,13 +1,13 @@
 from pydantic import BaseModel
 
 
-class GetDashboardSchema(BaseModel):
+class CreateFolderResponse(BaseModel):
     id: int
-    timezone: str
-    title: str = "Dashboard for API"
     uid: str
+    title: str
 
 
-class GetDashboardsWithIncorrectCredentialsSchema(BaseModel):
-    message: str = "invalid username or password"
-    messageId: str | None = None
+class CreateDashboardStatus(BaseModel):
+    status: str
+    uid: str
+    version: int
