@@ -7,4 +7,4 @@ from services.db_service import DBService
 def remove_user_if_exists(login: str) -> None:
     user = DBService.find_user_by_login(login)
     if user:
-        ApiUsersService.delete_api_user(user["id"])
+        ApiUsersService.delete_api_user(user_id=user[3])
