@@ -2,28 +2,33 @@ from __future__ import annotations
 
 import pytest
 
-from services.dashboard_hub_service import DashboardHubService
 from tests.resource_manager import ResourceManager
 
 
 @pytest.fixture(scope="session")
-def session_context():
+def session_resources():
     context = ResourceManager.prepare_environment()
     yield context
-    try:
-        if context.subscription_id:
-            DashboardHubService.delete_subscription(context.subscription_id)
-    finally:
-        ResourceManager.cleanup_environment()
+    ResourceManager.cleanup_environment()
+
+
+@pytest.fixture(scope="session")
+def session_context(session_resources):
+    return session_resources
+
+
+@pytest.fixture(scope="session")
+def test_context(session_resources):
+    return session_resources
 
 
 @pytest.fixture()
-def dashboard_uid(session_context):
-    assert session_context.dashboard_uid, "dashboard_uid was not created"
-    return session_context.dashboard_uid
+def dashboard_uid(session_resources):
+    assert session_resources.dashboards.dashboard_uid, "dashboard_uid was not created"
+    return session_resources.dashboards.dashboard_uid
 
 
 @pytest.fixture()
-def existing_user_login(session_context):
-    assert session_context.existing_user_login, "existing_user_login missing"
-    return session_context.existing_user_login
+def existing_user_login(session_resources):
+    assert session_resources.users.existing_user_login, "existing_user_login missing"
+    return session_resources.users.existing_user_login

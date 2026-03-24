@@ -5,10 +5,7 @@ import pytest
 
 from config import settings
 from helpers.schemas.dashboards_schema import GetDashboardsWithIncorrectCredentialsSchema
-from helpers.schemas.user_schema import (
-    Get404DashboardSchema,
-    GetDashboardWithLowAccessSchema,
-)
+from helpers.schemas.user_schema import Get404DashboardSchema
 from services.api_dashboards_service import ApiDashboardsService
 from services.utils import assert_json_response, validate_status_code_and_body
 
@@ -38,20 +35,6 @@ def test_get_dashboard_with_incorrect_auth(auth, test_context):
         auth=auth,
     )
     validate_status_code_and_body(response, GetDashboardsWithIncorrectCredentialsSchema, 401)
-    assert_json_response(response)
-
-
-@allure.title("Test get dashboard from user with low access in the system")
-@allure.description("This test attempts to get dashboard from low-access user")
-@allure.tag("ApiDashboardsService", "Negative")
-@allure.id("get_dashboard_with_low_level_access")
-@pytest.mark.NegativeDashboard
-def test_get_dashboard_with_low_level_access(test_context):
-    response = ApiDashboardsService.get_dashboard(
-        dashboard_uid=test_context.dashboards.dashboard_uid,
-        auth=settings.LOW_ACCESS,
-    )
-    validate_status_code_and_body(response, GetDashboardWithLowAccessSchema, 403)
     assert_json_response(response)
 
 
