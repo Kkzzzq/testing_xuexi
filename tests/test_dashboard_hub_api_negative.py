@@ -20,12 +20,13 @@ def test_create_duplicate_subscription(session_context):
     payload = {
         "dashboard_uid": session_context.dashboard_uid,
         "user_login": session_context.existing_user_login,
-        "channel": "email",
+        "channel": "webhook",
         "cron": "0 */6 * * *",
     }
+
     first, first_id = DashboardHubService.create_subscription(**payload)
     assert first.status_code == 201
-    session_context.subscription_id = first_id
+    session_context.register_subscription(first_id)
 
     second, _ = DashboardHubService.create_subscription(**payload)
     assert second.status_code == 409
@@ -53,7 +54,7 @@ def test_get_expired_share_link(session_context):
     payload = make_share_link_payload(session_context.dashboard_uid, ttl_hours=-1)
     response, token = DashboardHubService.create_share_link(**payload)
     assert response.status_code == 201
-    session_context.share_token = token
+    session_context.register_share_token(token)
 
     get_response = DashboardHubService.get_share_link(token)
     assert get_response.status_code == 410
