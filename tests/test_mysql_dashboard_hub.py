@@ -7,21 +7,44 @@ from services.mysql_service import MySQLService
 
 @pytest.mark.sql
 def test_subscription_written_to_mysql(session_context):
-    response = DashboardHubService.create_subscription(
-        make_subscription_payload(session_context.dashboard_uid, session_context.existing_user_login, channel="slack")
+    payload = make_subscription_payload(
+        session_context.dashboard_uid,
+        session_context.low_access_user_login,
+        channel="slack",
     )
-    assert response.status_code in (201, 409)
-    payload = response.json()
-    row = MySQLService.fetch_subscription_by_id(payload["id"])
+    response, subscription_id = DashboardHubService.create_subscription(**payload)
+    assert response.status_code == 201
+    session_context.subscription_id = subscription_id
+
+    row = MySQLService.fetch_subscription_by_id(subscription_id)
     assert row is not None
     assert row["dashboard_uid"] == session_context.dashboard_uid
+    assert row["user_login"] == session_context.low_access_user_login
+    assert row["channel"] == "slack"
+
+    delete_response = DashboardHubService.delete_subscription(subscription_id)
+    assert delete_response.status_code == 200
+    session_context.subscription_id = None
+
+    deleted_row = MySQLService.fetch_subscription_by_id(subscription_id)
+    assert deleted_row is None
 
 
 @pytest.mark.sql
-def test_share_link_written_to_mysql(session_context):
-    response = DashboardHubService.create_share_link(make_share_link_payload(session_context.dashboard_uid))
+def test_share_link_written_to_mysql_and_view_count_updated(session_context):
+    payload = make_share_link_payload(session_context.dashboard_uid)
+    response, token = DashboardHubService.create_share_link(**payload)
     assert response.status_code == 201
-    payload = response.json()
-    row = MySQLService.fetch_share_link_by_token(payload["token"])
+    session_context.share_token = token
+
+    row = MySQLService.fetch_share_link_by_token(token)
     assert row is not None
     assert row["dashboard_uid"] == session_context.dashboard_uid
+    assert row["view_count"] == 0
+
+    get_response = DashboardHubService.get_share_link(token)
+    assert get_response.status_code == 200
+
+    updated_row = MySQLService.fetch_share_link_by_token(token)
+    assert updated_row is not None
+    assert updated_row["view_count"] >= 1
