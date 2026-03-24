@@ -1,0 +1,152 @@
+services:
+  grafana:
+    image: grafana/grafana:12.3.5
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_ORG_CREATE: "true"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health | grep -q 'ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  mysql:
+    image: mysql:8.4
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_DATABASE: dashboard_hub
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -proot --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "PING"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  dashboard-hub:
+    build:
+      context: ./apps/dashboard_hub
+    ports:
+      - "8000:8000"
+    environment:
+      GRAFANA_BASE_URL: http://grafana:3000
+      GRAFANA_ADMIN_USER: admin
+      GRAFANA_ADMIN_PASSWORD: admin
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+      MYSQL_DB: dashboard_hub
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      CACHE_TTL_SECONDS: 120
+    depends_on:
+      grafana:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/health | grep -q 'ok'"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      dashboard-hub:
+        condition: service_healthy
+
+  test-runner:
+    build:
+      context: .
+    depends_on:
+      grafana:
+        condition: service_healthy
+      dashboard-hub:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      GRAFANA_BASE_URL: http://grafana:3000
+      DASHBOARD_HUB_BASE_URL: http://dashboard-hub:8000
+      GRAFANA_ADMIN_USER: admin
+      GRAFANA_ADMIN_PASSWORD: admin
+      GRAFANA_LOW_ACCESS_USER: LowAccess
+      GRAFANA_LOW_ACCESS_PASSWORD: test
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: app
+      MYSQL_PASSWORD: app
+      MYSQL_DB: dashboard_hub
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      ALLURE_RESULTS_DIR: /app/allure-results
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./allure-results:/app/allure-results
+      - ./allure-report:/app/allure-report
+      - ./:/app
+    command:
+      - /bin/sh
+      - -c
+      - |
+        python - <<'PY'
+        import json
+        import time
+        import urllib.request
+
+        endpoints = [
+            ("Grafana", "http://grafana:3000/api/health"),
+            ("Dashboard Hub", "http://dashboard-hub:8000/health"),
+        ]
+
+        for name, url in endpoints:
+            for attempt in range(60):
+                try:
+                    with urllib.request.urlopen(url, timeout=3) as response:
+                        payload = json.loads(response.read().decode("utf-8"))
+                        status = payload.get("status") or payload.get("database")
+                        if status in ("ok", "healthy"):
+                            print(f"{name} is ready")
+                            break
+                except Exception as exc:
+                    print(f"Waiting for {name}... attempt {attempt + 1}/60: {exc}")
+                time.sleep(2)
+            else:
+                raise SystemExit(f"{name} did not become ready in time")
+        PY
+        pytest /app/tests -m "not perf" --alluredir=/app/allure-results
+
+volumes:
+  grafana-data:
+  mysql-data:
