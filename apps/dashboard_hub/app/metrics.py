@@ -22,7 +22,22 @@ _UUID_RE = re.compile(
 )
 _INT_RE = re.compile(r"^\d+$")
 _HEX_RE = re.compile(r"^[0-9a-fA-F]{16,}$")
-_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{12,}$")
+_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,}$")
+
+_STATIC_SEGMENTS = {
+    "api",
+    "v1",
+    "health",
+    "metrics",
+    "dashboards",
+    "subscriptions",
+    "share-links",
+    "summary",
+}
+
+
+def _looks_like_share_token(segment: str) -> bool:
+    return bool(_TOKEN_RE.fullmatch(segment) or _UUID_RE.fullmatch(segment) or _HEX_RE.fullmatch(segment))
 
 
 def normalize_metrics_path(request) -> str:
@@ -31,24 +46,43 @@ def normalize_metrics_path(request) -> str:
     if isinstance(route_path, str) and route_path:
         return route_path
 
-    path = request.url.path
-    parts = []
-    for segment in path.strip("/").split("/"):
-        if not segment:
+    raw_path = request.url.path.strip("/")
+    if not raw_path:
+        return "/"
+
+    segments = raw_path.split("/")
+    normalized: list[str] = []
+
+    for index, segment in enumerate(segments):
+        previous = segments[index - 1] if index > 0 else None
+
+        if segment in _STATIC_SEGMENTS:
+            normalized.append(segment)
+            continue
+
+        if previous == "dashboards":
+            normalized.append("{dashboard_uid}")
+            continue
+
+        if previous == "subscriptions" and _INT_RE.fullmatch(segment):
+            normalized.append("{subscription_id}")
+            continue
+
+        if previous == "share-links" and _looks_like_share_token(segment):
+            normalized.append("{token}")
+            continue
+
+        if _UUID_RE.fullmatch(segment):
+            normalized.append("{uuid}")
             continue
 
         if _INT_RE.fullmatch(segment):
-            parts.append("{id}")
-        elif _UUID_RE.fullmatch(segment):
-            parts.append("{uuid}")
-        elif _HEX_RE.fullmatch(segment):
-            parts.append("{hex}")
-        elif _TOKEN_RE.fullmatch(segment):
-            parts.append("{token}")
-        else:
-            parts.append(segment)
+            normalized.append("{id}")
+            continue
 
-    return "/" + "/".join(parts) if parts else "/"
+        normalized.append(segment)
+
+    return "/" + "/".join(normalized)
 
 
 def metrics_response():
