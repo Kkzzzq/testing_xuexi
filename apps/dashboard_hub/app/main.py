@@ -18,7 +18,7 @@ from app.crud import (
     list_subscriptions,
 )
 from app.database import get_db
-from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, metrics_response
+from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, metrics_response, normalize_metrics_path
 from app.schemas import (
     DashboardSummaryOut,
     ShareLinkCreate,
@@ -45,9 +45,11 @@ async def prometheus_middleware(request: Request, call_next):
     start = time.perf_counter()
     response = await call_next(request)
     elapsed = time.perf_counter() - start
-    path = request.url.path
-    REQUEST_COUNT.labels(request.method, path, response.status_code).inc()
-    REQUEST_LATENCY.labels(request.method, path).observe(elapsed)
+
+    metrics_path = normalize_metrics_path(request)
+
+    REQUEST_COUNT.labels(request.method, metrics_path, response.status_code).inc()
+    REQUEST_LATENCY.labels(request.method, metrics_path).observe(elapsed)
     return response
 
 
