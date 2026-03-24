@@ -32,7 +32,7 @@ jobs:
       - name: Cleanup previous containers and reports
         run: |
           docker compose down -v --remove-orphans || true
-          rm -rf allure-results allure-report || true
+          sudo rm -rf allure-results allure-report || true
 
       - name: Run tests with Docker Compose
         run: docker compose up --build --exit-code-from test-runner
@@ -40,6 +40,12 @@ jobs:
       - name: Show container logs on failure
         if: failure()
         run: docker compose logs
+
+      - name: Fix report directory permissions
+        if: always()
+        run: |
+          sudo chown -R "$(id -u)":"$(id -g)" allure-results allure-report 2>/dev/null || true
+          mkdir -p allure-results allure-report
 
       - name: Generate Allure report
         if: always()
