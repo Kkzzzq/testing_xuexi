@@ -24,3 +24,12 @@ class HttpClient:
         if self.auth and "auth" not in kwargs:
             kwargs["auth"] = self.auth
         return self.session.request(method=method.upper(), url=url, **kwargs)
+
+    def close(self) -> None:
+        self.session.close()
+
+    def __enter__(self) -> "HttpClient":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
