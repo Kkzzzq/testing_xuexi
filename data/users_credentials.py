@@ -7,10 +7,11 @@ import time
 
 def make_random_credentials(prefix: str = "User") -> dict[str, str]:
     suffix = f"{int(time.time() * 1000)}{random.randint(100, 999)}"
-    login = f"{prefix}{suffix}"
+    display_name = f"{prefix}{suffix}"
+    login = display_name.lower()
     return {
-        "name": login,
-        "email": f"{login.lower()}@test.local",
+        "name": display_name,
+        "email": f"{login}@test.local",
         "login": login,
         "password": "test123",
     }
