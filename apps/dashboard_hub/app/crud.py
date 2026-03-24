@@ -29,6 +29,7 @@ def fetch_dashboard_summary(dashboard_uid: str) -> dict | None:
     )
     if response.status_code != 200:
         return None
+
     payload = response.json()
     meta = payload.get("meta", {})
     dashboard = payload.get("dashboard", {})
@@ -155,7 +156,7 @@ def get_share_link(db: Session, token: str):
     payload = _share_link_payload(row)
     cache.set_json(cache_key, payload, ex=CACHE_TTL_SECONDS)
 
-    return payload if cached or not cached else payload
+    return payload
 
 
 def delete_share_link(db: Session, token: str):
@@ -177,5 +178,6 @@ def get_dashboard_summary(dashboard_uid: str):
     payload = fetch_dashboard_summary(dashboard_uid)
     if not payload:
         return None
+
     cache.set_json(cache_key, payload, ex=CACHE_TTL_SECONDS)
     return payload
