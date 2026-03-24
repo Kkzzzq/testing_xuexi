@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -8,7 +9,7 @@ from pydantic import BaseModel, Field
 class SubscriptionCreate(BaseModel):
     dashboard_uid: str = Field(min_length=3)
     user_login: str = Field(min_length=1)
-    channel: str = Field(default="email")
+    channel: Literal["email", "slack", "webhook"] = "email"
     cron: str = Field(default="0 */6 * * *")
 
 
