@@ -1,2 +1,0 @@
-[32mINFO    [0m root:utils.py:52 Status=412, body={'message': "User with email 'SergeySergey@test.ru' or username 'SergeySergey' already exists"}, url=http://grafana:3000/api/admin/users
-[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'message': "User with email 'SergeySergey@test.ru' or username 'SergeySergey' already exists"}

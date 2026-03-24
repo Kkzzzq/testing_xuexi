@@ -1,2 +1,0 @@
-[32mINFO    [0m root:utils.py:52 Status=200, body={'message': 'User added to organization', 'userId': 3}, url=http://grafana:3000/api/orgs/2/users
-[32mINFO    [0m root:utils.py:45 Function: validate_status_code_and_body successfully validated; response: {'message': 'User added to organization', 'userId': 3}

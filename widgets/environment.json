@@ -1,1 +1,0 @@
-[{"values":["3.11.15"],"name":"Python"},{"values":["http://grafana:3000"],"name":"BaseURL"},{"values":["/var/lib/grafana/grafana.db"],"name":"DBPath"},{"values":["Docker Compose (Local)"],"name":"Runner"}]
