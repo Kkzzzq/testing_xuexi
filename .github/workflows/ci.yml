@@ -60,8 +60,7 @@ jobs:
             allure generate allure-results -o allure-report --clean
           else
             mkdir -p allure-report
-            printf '%s
-' '# No allure results generated' > allure-report/index.html
+            printf '%s\n' '# No allure results generated' > allure-report/index.html
           fi
 
       - name: Upload Allure report artifact
