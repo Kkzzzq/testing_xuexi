@@ -1,1 +1,0 @@
-[{"values":["http://grafana:3000"],"name":"GRAFANA_BASE_URL"},{"values":["http://dashboard-hub:8000"],"name":"DASHBOARD_HUB_BASE_URL"},{"values":["mysql"],"name":"MYSQL_HOST"},{"values":["redis"],"name":"REDIS_HOST"},{"values":["Grafana + Dashboard Hub + MySQL + Redis + Prometheus"],"name":"STACK"}]
