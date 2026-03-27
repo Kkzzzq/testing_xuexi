@@ -1,0 +1,11 @@
+
+========== Dashboard AI Summary ==========
+dashboard_uid: 944a4a07-b61e-4917-a4ff-c4a25a03e6db
+title: dashboard-auto-1774581371341
+source: ai
+provider: deepseek
+model: deepseek-chat
+prompt_version: v1
+ai_summary: 这是一个名为 dashboard-auto-1774581371341 的自动化仪表板，目前没有配置任何监控面板。
+=========================================
+
