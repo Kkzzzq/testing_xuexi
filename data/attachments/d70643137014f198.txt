@@ -1,0 +1,7 @@
+
+========== Cached Dashboard AI Summary ==========
+redis_key: dashhub:summary:7f63c6ce-b72c-4b81-97bb-a13b72913382:deepseek:deepseek-chat:v1
+source: fallback
+ai_summary: dashboard-auto-1774581266411，用于展示相关监控信息。
+================================================
+
