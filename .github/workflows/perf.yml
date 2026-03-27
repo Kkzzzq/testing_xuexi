@@ -100,11 +100,13 @@ jobs:
               fh.write("LOCUST_CONFLICT_USER_LOGIN=locust_conflict_user\n")
           PY
 
-      - name: Install Python dependencies
+      - name: Create virtual environment and install dependencies
         run: |
+          python -m venv .venv
+          . .venv/bin/activate
           python -m pip install --upgrade pip setuptools wheel
-          pip install -r requirements.txt
-          pip install locust gevent zope.event zope.interface
+          python -m pip install -r requirements.txt
+          python -m pip install "locust>=2.31,<3" "gevent>=24.2.1" "zope.event>=5.0" "zope.interface>=7.0"
           python - <<'PY'
           import locust
           import gevent
@@ -119,6 +121,7 @@ jobs:
           LOCUST_SHARE_TOKEN: ${{ env.LOCUST_SHARE_TOKEN }}
           LOCUST_CONFLICT_USER_LOGIN: ${{ env.LOCUST_CONFLICT_USER_LOGIN }}
         run: |
+          . .venv/bin/activate
           mkdir -p perf-results
           locust -f perf/locustfile.py \
             --host http://localhost:8000 \
