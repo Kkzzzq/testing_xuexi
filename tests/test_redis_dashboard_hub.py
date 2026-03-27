@@ -1,3 +1,5 @@
+import json
+
 import allure
 import pytest
 
@@ -81,7 +83,7 @@ def test_dashboard_summary_is_cached(session_context):
         attachment_type=allure.attachment_type.TEXT,
     )
     allure.attach(
-        str(cached_payload),
+        json.dumps(cached_payload, ensure_ascii=False, indent=2),
         name="Cached Dashboard Summary Payload",
         attachment_type=allure.attachment_type.JSON,
     )
