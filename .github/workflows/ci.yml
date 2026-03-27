@@ -2,6 +2,9 @@ name: Run Tests
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -13,6 +16,7 @@ concurrency:
 jobs:
   run-tests:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,6 +39,8 @@ jobs:
           sudo rm -rf allure-results allure-report || true
 
       - name: Run tests with Docker Compose
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
         run: docker compose up --build --exit-code-from test-runner
 
       - name: Show container logs on failure
