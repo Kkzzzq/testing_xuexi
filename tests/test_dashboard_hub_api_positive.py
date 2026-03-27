@@ -15,8 +15,8 @@ def test_create_subscription_success(session_context):
         channel="email",
     )
     response, subscription_id = DashboardHubService.create_subscription(**payload)
-    assert response.status_code == 201
 
+    assert response.status_code == 201
     data = response.json()
     assert data["dashboard_uid"] == session_context.dashboard_uid
     assert data["user_login"] == session_context.existing_user_login
@@ -30,8 +30,8 @@ def test_create_subscription_success(session_context):
 def test_create_share_link_success(session_context):
     payload = make_share_link_payload(session_context.dashboard_uid)
     response, token = DashboardHubService.create_share_link(**payload)
-    assert response.status_code == 201
 
+    assert response.status_code == 201
     data = response.json()
     assert data["dashboard_uid"] == session_context.dashboard_uid
     assert data["token"]
@@ -78,7 +78,7 @@ def test_get_share_link_success(session_context):
     assert payload["token"] == token
 
 
-@allure.title("Read dashboard summary successfully")
+@allure.title("Read dashboard AI summary successfully")
 @pytest.mark.PositiveDashboardHub
 def test_get_dashboard_summary_success(session_context):
     response = DashboardHubService.get_dashboard_summary(session_context.dashboard_uid)
@@ -87,3 +87,8 @@ def test_get_dashboard_summary_success(session_context):
     payload = response.json()
     assert payload["dashboard_uid"] == session_context.dashboard_uid
     assert payload["title"]
+    assert payload["ai_summary"]
+    assert payload["provider"]
+    assert payload["model"]
+    assert payload["prompt_version"]
+    assert payload["source"] in {"ai", "fallback"}
