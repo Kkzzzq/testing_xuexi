@@ -18,6 +18,7 @@ MAX_TRACE_CHARS = int(os.getenv("AI_ANALYSIS_MAX_TRACE_CHARS", "3000"))
 MAX_CASES = int(os.getenv("AI_ANALYSIS_MAX_CASES", "50"))
 MAX_FAILED_CASES = int(os.getenv("AI_ANALYSIS_MAX_FAILED_CASES", "20"))
 MAX_PASSED_CASES = int(os.getenv("AI_ANALYSIS_MAX_PASSED_CASES", "10"))
+AI_TIMEOUT_SECONDS = int(os.getenv("AI_TIMEOUT_SECONDS", "300"))
 
 
 def _truncate(text: str | None, limit: int) -> str:
@@ -46,8 +47,14 @@ def collect_test_cases() -> list[dict]:
                 "name": payload.get("name") or "unknown",
                 "fullName": payload.get("fullName") or "unknown",
                 "status": status,
-                "message": _truncate(payload.get("statusDetails", {}).get("message", ""), MAX_MESSAGE_CHARS),
-                "trace": _truncate(payload.get("statusDetails", {}).get("trace", ""), MAX_TRACE_CHARS),
+                "message": _truncate(
+                    payload.get("statusDetails", {}).get("message", ""),
+                    MAX_MESSAGE_CHARS,
+                ),
+                "trace": _truncate(
+                    payload.get("statusDetails", {}).get("trace", ""),
+                    MAX_TRACE_CHARS,
+                ),
             }
         )
 
@@ -108,7 +115,7 @@ def ask_ai(summary: dict) -> str:
     )
 
     try:
-        with request.urlopen(req, timeout=30) as response:
+        with request.urlopen(req, timeout=AI_TIMEOUT_SECONDS) as response:
             raw = response.read().decode("utf-8")
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
