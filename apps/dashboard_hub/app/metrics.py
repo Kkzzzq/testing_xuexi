@@ -16,6 +16,21 @@ REQUEST_LATENCY = Histogram(
     "HTTP latency",
     ["method", "path"],
 )
+CACHE_HIT_COUNT = Counter(
+    "dashboard_hub_cache_hit_total",
+    "Total cache hit count",
+    ["cache_name"],
+)
+CACHE_MISS_COUNT = Counter(
+    "dashboard_hub_cache_miss_total",
+    "Total cache miss count",
+    ["cache_name"],
+)
+SUMMARY_SOURCE_COUNT = Counter(
+    "dashboard_hub_summary_source_total",
+    "Total dashboard summary source count",
+    ["source"],
+)
 
 _UUID_RE = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"

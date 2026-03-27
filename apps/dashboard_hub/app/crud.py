@@ -24,6 +24,7 @@ from app.config import (
     GRAFANA_ADMIN_USER,
     GRAFANA_BASE_URL,
 )
+from app.metrics import CACHE_HIT_COUNT, CACHE_MISS_COUNT, SUMMARY_SOURCE_COUNT
 from app.models import ShareLink, Subscription
 
 
@@ -167,8 +168,11 @@ def create_subscription(db: Session, dashboard_uid: str, user_login: str, channe
 def list_subscriptions(db: Session, dashboard_uid: str):
     cache_key = f"dashhub:subscriptions:{dashboard_uid}"
     cached = cache.get_json(cache_key)
-    if cached:
+    if cached is not None:
+        CACHE_HIT_COUNT.labels(cache_name="subscriptions").inc()
         return cached
+
+    CACHE_MISS_COUNT.labels(cache_name="subscriptions").inc()
 
     rows = (
         db.query(Subscription)
@@ -226,7 +230,8 @@ def create_share_link(db: Session, dashboard_uid: str, expire_at: datetime | Non
 def get_share_link(db: Session, token: str):
     cache_key = f"dashhub:share:{token}"
     cached = cache.get_json(cache_key)
-    if cached:
+    if cached is not None:
+        CACHE_HIT_COUNT.labels(cache_name="share_link").inc()
         expire_at = _parse_expire_at(cached.get("expire_at"))
         if _is_expired(expire_at):
             cache.delete(cache_key)
@@ -245,6 +250,8 @@ def get_share_link(db: Session, token: str):
         cached["view_count"] = int(cached.get("view_count", 0)) + 1
         cache.set_json(cache_key, cached, ex=CACHE_TTL_SECONDS)
         return cached
+
+    CACHE_MISS_COUNT.labels(cache_name="share_link").inc()
 
     row = db.query(ShareLink).filter(ShareLink.token == token).first()
     if not row:
@@ -275,8 +282,12 @@ def delete_share_link(db: Session, token: str):
 def get_dashboard_summary(dashboard_uid: str):
     cache_key = _summary_cache_key(dashboard_uid)
     cached = cache.get_json(cache_key)
-    if cached:
+    if cached is not None:
+        CACHE_HIT_COUNT.labels(cache_name="summary").inc()
+        SUMMARY_SOURCE_COUNT.labels(source=cached.get("source", "fallback")).inc()
         return cached
+
+    CACHE_MISS_COUNT.labels(cache_name="summary").inc()
 
     context = fetch_dashboard_context(dashboard_uid)
     if not context:
@@ -309,5 +320,6 @@ def get_dashboard_summary(dashboard_uid: str):
         except AIClientError:
             pass
 
+    SUMMARY_SOURCE_COUNT.labels(source=payload["source"]).inc()
     cache.set_json(cache_key, payload, ex=CACHE_TTL_SECONDS)
     return payload
