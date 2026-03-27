@@ -6,6 +6,7 @@ on:
 jobs:
   perf:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -94,12 +95,9 @@ jobs:
               share_result = json.loads(response.read().decode("utf-8"))
 
           with open(github_env, "a", encoding="utf-8") as fh:
-              fh.write(f"LOCUST_DASHBOARD_UID={dashboard_uid}
-")
-              fh.write(f"LOCUST_SHARE_TOKEN={share_result['token']}
-")
-              fh.write("LOCUST_CONFLICT_USER_LOGIN=locust_conflict_user
-")
+              fh.write(f"LOCUST_DASHBOARD_UID={dashboard_uid}\n")
+              fh.write(f"LOCUST_SHARE_TOKEN={share_result['token']}\n")
+              fh.write("LOCUST_CONFLICT_USER_LOGIN=locust_conflict_user\n")
           PY
 
       - name: Install Python dependencies
@@ -114,7 +112,11 @@ jobs:
           LOCUST_CONFLICT_USER_LOGIN: ${{ env.LOCUST_CONFLICT_USER_LOGIN }}
         run: |
           mkdir -p perf-results
-          locust -f perf/locustfile.py             --host http://localhost:8000             --headless             -u 20 -r 5 -t 3m             --csv=perf-results/locust
+          locust -f perf/locustfile.py \
+            --host http://localhost:8000 \
+            --headless \
+            -u 20 -r 5 -t 3m \
+            --csv=perf-results/locust
 
       - name: Collect container logs on failure
         if: failure()
