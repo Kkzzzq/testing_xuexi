@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import secrets
 from datetime import datetime, timezone
+from typing import Any
 
 import requests
 from sqlalchemy.exc import IntegrityError
@@ -12,6 +14,8 @@ from app.ai_client import AIClient, AIClientError
 from app.config import (
     AI_API_KEY,
     AI_ENABLED,
+    AI_MAX_PANEL_JSON_CHARS,
+    AI_MAX_PANELS_TO_SUMMARIZE,
     AI_MODEL,
     AI_PROMPT_VERSION,
     AI_PROVIDER,
@@ -32,27 +36,50 @@ def dashboard_exists(dashboard_uid: str) -> bool:
     return response.status_code == 200
 
 
-def _extract_panel_titles(panels: list[dict] | None) -> list[str]:
+def _flatten_panels(panels: list[dict] | None) -> list[dict]:
     if not panels:
         return []
 
-    titles: list[str] = []
+    result: list[dict] = []
     for panel in panels:
-        title = panel.get("title")
-        if title:
-            titles.append(title)
+        result.append(panel)
+        nested = panel.get("panels")
+        if nested:
+            result.extend(_flatten_panels(nested))
+    return result
 
-        nested_panels = panel.get("panels")
-        if nested_panels:
-            titles.extend(_extract_panel_titles(nested_panels))
 
-    deduped: list[str] = []
+def _extract_panel_titles(panels: list[dict] | None) -> list[str]:
+    flat_panels = _flatten_panels(panels)
+
+    titles: list[str] = []
     seen: set[str] = set()
-    for title in titles:
-        if title not in seen:
+    for panel in flat_panels:
+        title = panel.get("title")
+        if title and title not in seen:
             seen.add(title)
-            deduped.append(title)
-    return deduped
+            titles.append(title)
+    return titles
+
+
+def _serialize_panel_for_ai(panel: dict[str, Any]) -> str:
+    panel_json = json.dumps(panel, ensure_ascii=False, separators=(",", ":"), default=str)
+    return panel_json[:AI_MAX_PANEL_JSON_CHARS]
+
+
+def _extract_panel_payloads(panels: list[dict] | None) -> list[dict[str, Any]]:
+    flat_panels = _flatten_panels(panels)
+    payloads: list[dict[str, Any]] = []
+
+    for panel in flat_panels[:AI_MAX_PANELS_TO_SUMMARIZE]:
+        payloads.append(
+            {
+                "title": panel.get("title", ""),
+                "panel_json": _serialize_panel_for_ai(panel),
+            }
+        )
+
+    return payloads
 
 
 def fetch_dashboard_context(dashboard_uid: str) -> dict | None:
@@ -67,13 +94,15 @@ def fetch_dashboard_context(dashboard_uid: str) -> dict | None:
     payload = response.json()
     meta = payload.get("meta", {})
     dashboard = payload.get("dashboard", {})
+    raw_panels = dashboard.get("panels", [])
 
     return {
         "dashboard_uid": dashboard_uid,
         "title": dashboard.get("title", ""),
         "url": meta.get("url"),
         "tags": dashboard.get("tags", []),
-        "panels": _extract_panel_titles(dashboard.get("panels", [])),
+        "panels": _extract_panel_titles(raw_panels),
+        "panel_payloads": _extract_panel_payloads(raw_panels),
     }
 
 
@@ -269,7 +298,8 @@ def get_dashboard_summary(dashboard_uid: str):
             ai_result = AIClient().summarize_dashboard(
                 title=context["title"],
                 tags=context["tags"],
-                panels=context["panels"],
+                panel_titles=context["panels"],
+                panel_payloads=context["panel_payloads"],
             )
             payload["ai_summary"] = ai_result["ai_summary"]
             payload["provider"] = ai_result["provider"]
