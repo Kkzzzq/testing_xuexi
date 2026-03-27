@@ -49,3 +49,8 @@ class DashboardSummaryOut(BaseModel):
     dashboard_uid: str
     title: str
     url: str | None = None
+    ai_summary: str
+    provider: str
+    model: str
+    prompt_version: str
+    source: Literal["ai", "fallback"]
