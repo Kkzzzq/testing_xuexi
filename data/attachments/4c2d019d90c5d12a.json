@@ -1,0 +1,10 @@
+{
+  "dashboard_uid": "65e3b249-c8fb-4d61-8bc5-19c3bfd45843",
+  "title": "dashboard-auto-1774700279680",
+  "url": "/d/65e3b249-c8fb-4d61-8bc5-19c3bfd45843/dashboard-auto-1774700279680",
+  "ai_summary": "这是一个自动化生成的系统资源监控面板，主要关注 CPU、内存和系统负载。数据显示 CPU 使用率与系统负载呈上升趋势，内存使用则相对平稳。",
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "prompt_version": "v1",
+  "source": "ai"
+}
