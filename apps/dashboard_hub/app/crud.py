@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app import cache
 from app.ai_client import AIClient, AIClientError
 from app.config import (
+    AGENT_DEMO_SUBSCRIPTION_CACHE_BUG,
     AI_API_KEY,
     AI_ENABLED,
     AI_MAX_PANEL_JSON_CHARS,
@@ -202,10 +203,19 @@ def delete_subscription(db: Session, subscription_id: int):
     row = db.query(Subscription).filter(Subscription.id == subscription_id).first()
     if not row:
         return None
+
     dashboard_uid = row.dashboard_uid
     db.delete(row)
     db.commit()
-    cache.delete(f"dashhub:subscriptions:{dashboard_uid}")
+
+    if AGENT_DEMO_SUBSCRIPTION_CACHE_BUG:
+        print(
+            "[agent-demo] AGENT_DEMO_SUBSCRIPTION_CACHE_BUG=true, "
+            f"skip deleting cache key dashhub:subscriptions:{dashboard_uid}"
+        )
+    else:
+        cache.delete(f"dashhub:subscriptions:{dashboard_uid}")
+
     return row
 
 
