@@ -89,23 +89,14 @@ def agent_logs(replay_id: str | None = Query(default=None), limit: int = Query(d
 @app.post("/api/v1/subscriptions", response_model=SubscriptionOut, status_code=status.HTTP_201_CREATED)
 def create_subscription_api(payload: SubscriptionCreate, db: Session = Depends(get_db)):
     exists = dashboard_exists(payload.dashboard_uid)
-    if not exists:
-        if demo_fault_enabled("unknown_dashboard_bypass"):
-            record_event(
-                "subscription_unknown_dashboard_check_skipped_for_demo",
-                dashboard_uid=payload.dashboard_uid,
-                user_login=payload.user_login,
-                channel=payload.channel,
-                reason="AGENT_DEMO_FAULTS:unknown_dashboard_bypass",
-            )
-        else:
-            record_event(
-                "subscription_unknown_dashboard_rejected",
-                dashboard_uid=payload.dashboard_uid,
-                user_login=payload.user_login,
-                channel=payload.channel,
-            )
-            raise HTTPException(status_code=404, detail="dashboard not found")
+    if not exists and not demo_fault_enabled("unknown_dashboard_bypass"):
+        record_event(
+            "subscription_unknown_dashboard_rejected",
+            dashboard_uid=payload.dashboard_uid,
+            user_login=payload.user_login,
+            channel=payload.channel,
+        )
+        raise HTTPException(status_code=404, detail="dashboard not found")
     try:
         row = create_subscription(
             db,

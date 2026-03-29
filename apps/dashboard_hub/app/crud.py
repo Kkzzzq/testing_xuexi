@@ -273,15 +273,7 @@ def delete_subscription(db: Session, subscription_id: int):
         dashboard_uid=dashboard_uid,
     )
 
-    if demo_fault_enabled("subscription_cache_bug"):
-        record_event(
-            "subscription_delete_cache_invalidation_skipped",
-            subscription_id=subscription_id,
-            dashboard_uid=dashboard_uid,
-            cache_key=cache_key,
-            reason="AGENT_DEMO_FAULTS:subscription_cache_bug",
-        )
-    else:
+    if not demo_fault_enabled("subscription_cache_bug"):
         cache.delete(cache_key)
         record_event(
             "subscription_delete_cache_invalidated",
@@ -390,14 +382,7 @@ def delete_share_link(db: Session, token: str):
     db.delete(row)
     db.commit()
     cache_key = f"dashhub:share:{token}"
-    if demo_fault_enabled("share_link_cache_bug"):
-        record_event(
-            "share_link_delete_cache_invalidation_skipped",
-            token=token,
-            cache_key=cache_key,
-            reason="AGENT_DEMO_FAULTS:share_link_cache_bug",
-        )
-    else:
+    if not demo_fault_enabled("share_link_cache_bug"):
         cache.delete(cache_key)
         record_event("share_link_delete_cache_invalidated", token=token, cache_key=cache_key)
     record_event("share_link_delete_finished", token=token, cache_key=cache_key)
