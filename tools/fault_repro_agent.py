@@ -89,7 +89,7 @@ def run_agent() -> tuple[dict[str, Any], list[dict[str, Any]]]:
 
     case_results: list[dict[str, Any]] = []
     for case in failed_cases:
-        replay_target = case.short_test_name or case.name
+        replay_target = case.replay_test_name
         with managed_agent_environment() as context:
             replay_result = run_failed_test_replay(replay_target, context)
 

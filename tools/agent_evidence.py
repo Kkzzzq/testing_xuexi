@@ -172,18 +172,26 @@ def collect_service_log_snapshot(*, replay_id: str, limit: int = 200) -> dict[st
         return {"available": False, "items": []}
 
 
+def _sanitize_log_item(item: dict[str, Any]) -> dict[str, Any]:
+    sanitized: dict[str, Any] = {}
+    for key, value in item.items():
+        if key == "reason" and isinstance(value, str) and "AGENT_DEMO_FAULTS" in value:
+            continue
+        if isinstance(value, str) and "AGENT_DEMO_FAULTS" in value:
+            continue
+        sanitized[key] = value
+    return sanitized
+
+
 def derive_likely_layer(observations: list[str], service_logs: list[dict[str, Any]] | None = None) -> str:
     for observation in observations:
         for prefix, layer in LAYER_BY_OBSERVATION_PREFIX.items():
             if observation.startswith(prefix):
                 return layer
-    items = service_logs or []
-    if any(item.get("event") in {"subscription_delete_cache_invalidation_skipped", "share_link_delete_cache_invalidation_skipped"} for item in items):
-        return "cache"
-    if any(item.get("event") == "subscription_unknown_dashboard_check_skipped_for_demo" for item in items):
-        return "interface"
     if observations:
         return "interface_or_environment"
+    if service_logs:
+        return "service_execution_path"
     return "not_reproduced_or_environment"
 
 
@@ -202,7 +210,8 @@ def build_evidence_lines(result: dict[str, Any]) -> list[str]:
         evidence_lines.append(f"INTERMEDIATE[{key}] {json.dumps(_serialize(value), ensure_ascii=False)}")
 
     service_logs = result.get("snapshot", {}).get("after", {}).get("service_logs", {}).get("items", [])
-    for log_item in service_logs[-15:]:
+    for raw_log_item in service_logs[-15:]:
+        log_item = _sanitize_log_item(raw_log_item)
         evidence_lines.append(f"LOG[{log_item.get('event')}] {json.dumps(_serialize(log_item), ensure_ascii=False)}")
 
     if not evidence_lines and result.get("observations"):
