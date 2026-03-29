@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -707,12 +708,51 @@ TEST_REPLAY_HANDLERS: dict[str, ReplayHandler] = {
     "test_dashboard_summary_is_cached": _run_test_dashboard_summary_is_cached,
 }
 
+_TEST_NAME_RE = re.compile(r"(test_[A-Za-z0-9_]+)")
+
+
+def resolve_replay_test_name(test_name: str) -> str:
+    raw = (test_name or "").strip()
+    if not raw:
+        return ""
+
+    candidates: list[str] = []
+    for candidate in (
+        raw,
+        raw.split("#")[-1],
+        raw.split("::")[-1],
+        raw.split("/")[-1],
+        raw.split("\\")[-1],
+    ):
+        value = candidate.strip()
+        if value and value not in candidates:
+            candidates.append(value)
+
+    regex_matches = _TEST_NAME_RE.findall(raw)
+    for match in regex_matches:
+        if match not in candidates:
+            candidates.append(match)
+
+    for candidate in candidates:
+        if candidate in TEST_REPLAY_HANDLERS:
+            return candidate
+
+    for candidate in candidates:
+        matches = _TEST_NAME_RE.findall(candidate)
+        for match in reversed(matches):
+            if match in TEST_REPLAY_HANDLERS:
+                return match
+
+    return raw
+
 
 def run_failed_test_replay(test_name: str, context: AgentEnvironmentContext) -> dict[str, Any]:
-    handler = TEST_REPLAY_HANDLERS.get(test_name)
+    resolved_name = resolve_replay_test_name(test_name)
+    handler = TEST_REPLAY_HANDLERS.get(resolved_name)
     if handler is None:
         return {
-            "replay_target": test_name,
+            "replay_target": resolved_name or test_name,
+            "requested_test_name": test_name,
             "execution_error": f"unsupported failed test replay: {test_name}",
             "failure_reproduced": False,
             "http_steps": [],
@@ -720,12 +760,18 @@ def run_failed_test_replay(test_name: str, context: AgentEnvironmentContext) -> 
             "observations": ["replay_unsupported_test"],
             "snapshot": {"before": {}, "after": {}, "diff": {}},
             "runtime": {},
+            "supported_tests": sorted(TEST_REPLAY_HANDLERS),
         }
     try:
-        return handler(context)
+        result = handler(context)
+        result["requested_test_name"] = test_name
+        result["resolved_test_name"] = resolved_name
+        return result
     except Exception as exc:  # noqa: BLE001
         return {
-            "replay_target": test_name,
+            "replay_target": resolved_name,
+            "requested_test_name": test_name,
+            "resolved_test_name": resolved_name,
             "execution_error": str(exc),
             "failure_reproduced": False,
             "http_steps": [],
