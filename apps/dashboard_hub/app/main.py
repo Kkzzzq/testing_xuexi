@@ -3,10 +3,11 @@ from __future__ import annotations
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.agent_log import clear_request_context, read_logs, record_event, set_request_context
 from app.crud import (
     create_share_link,
     create_subscription,
@@ -41,16 +42,32 @@ app = FastAPI(title="Dashboard Hub", version="1.0.0", lifespan=lifespan)
 
 
 @app.middleware("http")
-async def prometheus_middleware(request: Request, call_next):
+async def prometheus_and_agent_log_middleware(request: Request, call_next):
+    tokens = set_request_context(request.headers.get("X-Agent-Replay-Id"))
     start = time.perf_counter()
-    response = await call_next(request)
-    elapsed = time.perf_counter() - start
-
-    metrics_path = normalize_metrics_path(request)
-
-    REQUEST_COUNT.labels(request.method, metrics_path, response.status_code).inc()
-    REQUEST_LATENCY.labels(request.method, metrics_path).observe(elapsed)
-    return response
+    record_event(
+        "http_request_started",
+        method=request.method,
+        path=request.url.path,
+        query=str(request.url.query or ""),
+    )
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        elapsed = time.perf_counter() - start
+        metrics_path = normalize_metrics_path(request)
+        status_code = getattr(locals().get("response", None), "status_code", 500)
+        REQUEST_COUNT.labels(request.method, metrics_path, status_code).inc()
+        REQUEST_LATENCY.labels(request.method, metrics_path).observe(elapsed)
+        record_event(
+            "http_request_finished",
+            method=request.method,
+            path=request.url.path,
+            status_code=status_code,
+            elapsed_ms=round(elapsed * 1000, 2),
+        )
+        clear_request_context(tokens)
 
 
 @app.get("/health")
@@ -61,6 +78,11 @@ def health():
 @app.get("/metrics")
 def metrics():
     return metrics_response()
+
+
+@app.get("/agent/logs")
+def agent_logs(replay_id: str | None = Query(default=None), limit: int = Query(default=200, ge=1, le=1000)):
+    return {"items": read_logs(replay_id=replay_id, limit=limit)}
 
 
 @app.post("/api/v1/subscriptions", response_model=SubscriptionOut, status_code=status.HTTP_201_CREATED)

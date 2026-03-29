@@ -31,13 +31,10 @@ AI_TIMEOUT_SECONDS = int(os.getenv("AI_TIMEOUT_SECONDS", "20"))
 AI_PROMPT_VERSION = os.getenv("AI_PROMPT_VERSION", "v1")
 AI_MAX_SUMMARY_CHARS = int(os.getenv("AI_MAX_SUMMARY_CHARS", "120"))
 
-# 为了体现 AI，又避免 token 太大，限制最多只取前 3 个 panel
 AI_MAX_PANELS_TO_SUMMARIZE = int(os.getenv("AI_MAX_PANELS_TO_SUMMARIZE", "3"))
-
-# 每个 panel 的完整 JSON 最多保留多少字符
 AI_MAX_PANEL_JSON_CHARS = int(os.getenv("AI_MAX_PANEL_JSON_CHARS", "3000"))
 
-# 手动演示 agent 时使用。开启后，删除订阅时故意不清理 subscriptions 缓存。
 AGENT_DEMO_SUBSCRIPTION_CACHE_BUG = _get_bool("AGENT_DEMO_SUBSCRIPTION_CACHE_BUG", "false")
+AGENT_LOG_RETENTION = int(os.getenv("AGENT_LOG_RETENTION", "5000"))
 
 MYSQL_DSN = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
