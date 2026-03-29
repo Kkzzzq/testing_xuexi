@@ -6,7 +6,7 @@ from services.dashboard_hub_service import DashboardHubService
 from services.mysql_service import MySQLService
 
 
-@allure.label("fault_scenario", "subscription_persistence")
+@allure.label("fault_scenario", "subscription_mysql_persistence")
 @pytest.mark.sql
 def test_subscription_written_to_mysql(session_context):
     payload = make_subscription_payload(
@@ -34,7 +34,7 @@ def test_subscription_written_to_mysql(session_context):
     assert deleted_row is None
 
 
-@allure.label("fault_scenario", "share_link_view_count")
+@allure.label("fault_scenario", "share_link_mysql_write_and_view_count")
 @pytest.mark.sql
 def test_share_link_written_to_mysql_and_view_count_updated(session_context):
     payload = make_share_link_payload(session_context.dashboard_uid)

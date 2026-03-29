@@ -8,7 +8,7 @@ from services.dashboard_hub_service import DashboardHubService
 
 
 @allure.title("Create subscription successfully")
-@allure.label("fault_scenario", "subscription_persistence")
+@allure.label("fault_scenario", "subscription_create_success")
 @pytest.mark.PositiveDashboardHub
 @pytest.mark.smoke
 def test_create_subscription_success(session_context):
@@ -28,7 +28,7 @@ def test_create_subscription_success(session_context):
 
 
 @allure.title("Create share link successfully")
-@allure.label("fault_scenario", "share_link_view_count")
+@allure.label("fault_scenario", "share_link_create_success")
 @pytest.mark.PositiveDashboardHub
 @pytest.mark.smoke
 def test_create_share_link_success(session_context):
@@ -44,7 +44,7 @@ def test_create_share_link_success(session_context):
 
 
 @allure.title("List subscriptions successfully")
-@allure.label("fault_scenario", "subscription_cache_invalidation")
+@allure.label("fault_scenario", "subscription_list_success")
 @pytest.mark.PositiveDashboardHub
 def test_get_subscriptions_success(session_context):
     create_payload = make_subscription_payload(
@@ -67,7 +67,7 @@ def test_get_subscriptions_success(session_context):
 
 
 @allure.title("Read share link successfully")
-@allure.label("fault_scenario", "share_link_view_count")
+@allure.label("fault_scenario", "share_link_read_success")
 @pytest.mark.PositiveDashboardHub
 def test_get_share_link_success(session_context):
     create_payload = make_share_link_payload(session_context.dashboard_uid)
@@ -85,7 +85,7 @@ def test_get_share_link_success(session_context):
 
 
 @allure.title("Read dashboard AI summary successfully")
-@allure.label("fault_scenario", "summary_cache")
+@allure.label("fault_scenario", "summary_read_success")
 @pytest.mark.PositiveDashboardHub
 def test_get_dashboard_summary_success(session_context):
     response = DashboardHubService.get_dashboard_summary(session_context.dashboard_uid)
