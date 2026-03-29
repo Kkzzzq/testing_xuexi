@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from data.dashboard_hub_data import make_share_link_payload, make_subscription_payload
 from services.dashboard_hub_service import DashboardHubService
+from services.mysql_service import MySQLService
 from services.redis_service import RedisService
 from tools.agent_environment import AgentEnvironmentContext
 from tools.agent_evidence import build_summary_cache_key
@@ -444,6 +445,9 @@ def _run_test_subscription_written_to_mysql(context: AgentEnvironmentContext) ->
         context.register_subscription(subscription_id)
     http_steps.append(_step("create_subscription", response, 201))
 
+    created_row = MySQLService.fetch_subscription_by_id(subscription_id) if subscription_id else None
+    intermediate["db_row_after_create"] = created_row
+
     delete_response = DashboardHubService.delete_subscription(subscription_id, replay_id=runtime["replay_id"])
     http_steps.append(_step("delete_subscription", delete_response, 200))
     context.forget_subscription(subscription_id)
@@ -451,6 +455,17 @@ def _run_test_subscription_written_to_mysql(context: AgentEnvironmentContext) ->
 
     if response.status_code != 201:
         observations.append("obs_http_create_status_unexpected")
+    if delete_response.status_code != 200:
+        observations.append("obs_http_delete_status_unexpected")
+    if created_row is None:
+        observations.append("obs_db_subscription_row_absent_after_create")
+    else:
+        if created_row.get("dashboard_uid") != context.dashboard_uid:
+            observations.append("obs_db_subscription_dashboard_uid_mismatch_after_create")
+        if created_row.get("user_login") != context.low_access_user_login:
+            observations.append("obs_db_subscription_user_login_mismatch_after_create")
+        if created_row.get("channel") != "slack":
+            observations.append("obs_db_subscription_channel_mismatch_after_create")
     if after.get("subscription", {}).get("subscription_row") is not None:
         observations.append("obs_db_subscription_row_present_after_delete")
 
@@ -482,8 +497,14 @@ def _run_test_share_link_written_to_mysql_and_view_count_updated(context: AgentE
         context.register_share_token(token)
     http_steps.append(_step("create_share_link", create_response, 201))
 
+    row_after_create = MySQLService.fetch_share_link_by_token(token) if token else None
+    intermediate["db_row_after_create"] = row_after_create
+
     get_response = DashboardHubService.get_share_link(token, replay_id=runtime["replay_id"])
     http_steps.append(_step("get_share_link", get_response, 200))
+
+    row_after_get = MySQLService.fetch_share_link_by_token(token) if token else None
+    intermediate["db_row_after_get"] = row_after_get
 
     delete_response = DashboardHubService.delete_share_link(token, replay_id=runtime["replay_id"])
     http_steps.append(_step("delete_share_link", delete_response, 200))
@@ -492,11 +513,26 @@ def _run_test_share_link_written_to_mysql_and_view_count_updated(context: AgentE
 
     if create_response.status_code != 201:
         observations.append("obs_http_create_status_unexpected")
-    share_state = after.get("share_link", {})
-    mysql_row = share_state.get("mysql_row") or {}
+    if get_response.status_code != 200:
+        observations.append("obs_http_get_status_unexpected")
     if delete_response.status_code != 200:
         observations.append("obs_http_delete_status_unexpected")
-    if mysql_row:
+
+    if row_after_create is None:
+        observations.append("obs_db_share_row_absent_after_create")
+    else:
+        if row_after_create.get("dashboard_uid") != context.dashboard_uid:
+            observations.append("obs_db_share_dashboard_uid_mismatch_after_create")
+        if int(row_after_create.get("view_count", -1)) != 0:
+            observations.append("obs_db_initial_view_count_unexpected")
+
+    if row_after_get is None:
+        observations.append("obs_db_share_row_absent_after_read")
+    else:
+        if int(row_after_get.get("view_count", 0)) < 1:
+            observations.append("obs_db_view_count_not_advanced_after_read")
+
+    if after.get("share_link", {}).get("mysql_row") is not None:
         observations.append("obs_db_share_row_present_after_delete")
 
     return _finalize_result(
