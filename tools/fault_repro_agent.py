@@ -47,7 +47,7 @@ def _build_next_actions(likely_layer: str, observations: list[str], diagnosis_st
         ])
     elif likely_layer == "external_dependency_or_ai":
         actions.extend([
-            "检查 Grafana 依赖是否可访问，以及摘要场景是否发生 fallback。",
+            "检查 Grafana 依赖是否可访问，以及摘要接口是否发生 fallback。",
             "检查 AI 配置、返回结果和 summary source 指标。",
         ])
     elif likely_layer == "service_execution_path":
