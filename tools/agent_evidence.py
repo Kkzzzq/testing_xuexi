@@ -178,8 +178,10 @@ def derive_likely_layer(observations: list[str], service_logs: list[dict[str, An
             if observation.startswith(prefix):
                 return layer
     items = service_logs or []
-    if any(item.get("event") == "subscription_delete_cache_invalidation_skipped" for item in items):
+    if any(item.get("event") in {"subscription_delete_cache_invalidation_skipped", "share_link_delete_cache_invalidation_skipped"} for item in items):
         return "cache"
+    if any(item.get("event") == "subscription_unknown_dashboard_check_skipped_for_demo" for item in items):
+        return "interface"
     if observations:
         return "interface_or_environment"
     return "not_reproduced_or_environment"
