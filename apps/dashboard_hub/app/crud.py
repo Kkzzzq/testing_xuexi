@@ -13,7 +13,6 @@ from app import cache
 from app.agent_log import record_event
 from app.ai_client import AIClient, AIClientError
 from app.config import (
-    AGENT_DEMO_SUBSCRIPTION_CACHE_BUG,
     AI_API_KEY,
     AI_ENABLED,
     AI_MAX_PANEL_JSON_CHARS,
@@ -25,6 +24,7 @@ from app.config import (
     GRAFANA_ADMIN_PASSWORD,
     GRAFANA_ADMIN_USER,
     GRAFANA_BASE_URL,
+    demo_fault_enabled,
 )
 from app.metrics import CACHE_HIT_COUNT, CACHE_MISS_COUNT, SUMMARY_SOURCE_COUNT
 from app.models import ShareLink, Subscription
@@ -273,13 +273,13 @@ def delete_subscription(db: Session, subscription_id: int):
         dashboard_uid=dashboard_uid,
     )
 
-    if AGENT_DEMO_SUBSCRIPTION_CACHE_BUG:
+    if demo_fault_enabled("subscription_cache_bug"):
         record_event(
             "subscription_delete_cache_invalidation_skipped",
             subscription_id=subscription_id,
             dashboard_uid=dashboard_uid,
             cache_key=cache_key,
-            reason="AGENT_DEMO_SUBSCRIPTION_CACHE_BUG",
+            reason="AGENT_DEMO_FAULTS:subscription_cache_bug",
         )
     else:
         cache.delete(cache_key)
@@ -390,7 +390,16 @@ def delete_share_link(db: Session, token: str):
     db.delete(row)
     db.commit()
     cache_key = f"dashhub:share:{token}"
-    cache.delete(cache_key)
+    if demo_fault_enabled("share_link_cache_bug"):
+        record_event(
+            "share_link_delete_cache_invalidation_skipped",
+            token=token,
+            cache_key=cache_key,
+            reason="AGENT_DEMO_FAULTS:share_link_cache_bug",
+        )
+    else:
+        cache.delete(cache_key)
+        record_event("share_link_delete_cache_invalidated", token=token, cache_key=cache_key)
     record_event("share_link_delete_finished", token=token, cache_key=cache_key)
     return row
 

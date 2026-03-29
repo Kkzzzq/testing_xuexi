@@ -7,6 +7,23 @@ def _get_bool(name: str, default: str = "false") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _parse_faults() -> set[str]:
+    raw = os.getenv("AGENT_DEMO_FAULTS", "").strip()
+    faults = {
+        item.strip()
+        for item in raw.split(",")
+        if item.strip() and item.strip().lower() not in {"off", "false", "none"}
+    }
+    # backward compatibility for the previous single-bug toggle
+    if _get_bool("AGENT_DEMO_SUBSCRIPTION_CACHE_BUG", "false"):
+        faults.add("subscription_cache_bug")
+    return faults
+
+
+def demo_fault_enabled(name: str) -> bool:
+    return name in AGENT_DEMO_FAULTS
+
+
 GRAFANA_BASE_URL = os.getenv("GRAFANA_BASE_URL", "http://grafana:3000")
 GRAFANA_ADMIN_USER = os.getenv("GRAFANA_ADMIN_USER", "admin")
 GRAFANA_ADMIN_PASSWORD = os.getenv("GRAFANA_ADMIN_PASSWORD", "admin")
@@ -34,7 +51,7 @@ AI_MAX_SUMMARY_CHARS = int(os.getenv("AI_MAX_SUMMARY_CHARS", "120"))
 AI_MAX_PANELS_TO_SUMMARIZE = int(os.getenv("AI_MAX_PANELS_TO_SUMMARIZE", "3"))
 AI_MAX_PANEL_JSON_CHARS = int(os.getenv("AI_MAX_PANEL_JSON_CHARS", "3000"))
 
-AGENT_DEMO_SUBSCRIPTION_CACHE_BUG = _get_bool("AGENT_DEMO_SUBSCRIPTION_CACHE_BUG", "false")
+AGENT_DEMO_FAULTS = _parse_faults()
 AGENT_LOG_RETENTION = int(os.getenv("AGENT_LOG_RETENTION", "5000"))
 
 MYSQL_DSN = f"mysql+pymysql://{MYSQL_USER}:{MYSQL_PASSWORD}@{MYSQL_HOST}:{MYSQL_PORT}/{MYSQL_DB}"
