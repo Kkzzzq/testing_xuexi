@@ -3,14 +3,10 @@ name: Run Tests
 on:
   workflow_dispatch:
     inputs:
-      enable_agent_demo_fault:
-        description: "Enable demo fault: stale subscription cache after delete"
+      agent_demo_faults:
+        description: "Comma-separated demo faults: subscription_cache_bug,share_link_cache_bug,unknown_dashboard_bypass"
         required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
+        default: "off"
   push:
     branches:
       - main
@@ -26,7 +22,7 @@ jobs:
   run-tests:
     runs-on: ubuntu-latest
     env:
-      AGENT_DEMO_SUBSCRIPTION_CACHE_BUG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.enable_agent_demo_fault || 'false' }}
+      AGENT_DEMO_FAULTS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.agent_demo_faults || 'off' }}
 
     steps:
       - name: Checkout code
@@ -63,7 +59,7 @@ jobs:
       - name: Start backend services in background
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          AGENT_DEMO_SUBSCRIPTION_CACHE_BUG: ${{ env.AGENT_DEMO_SUBSCRIPTION_CACHE_BUG }}
+          AGENT_DEMO_FAULTS: ${{ env.AGENT_DEMO_FAULTS }}
         run: |
           docker compose up -d --build grafana mysql redis dashboard-hub prometheus
 
@@ -74,7 +70,7 @@ jobs:
         id: run_tests
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
-          AGENT_DEMO_SUBSCRIPTION_CACHE_BUG: ${{ env.AGENT_DEMO_SUBSCRIPTION_CACHE_BUG }}
+          AGENT_DEMO_FAULTS: ${{ env.AGENT_DEMO_FAULTS }}
         run: docker compose run --rm test-runner
 
       - name: Collect docker compose logs
@@ -103,7 +99,8 @@ jobs:
             allure generate allure-results -o allure-report --clean
           else
             mkdir -p allure-report
-            printf '%s\n' '# No allure results generated' > allure-report/index.html
+            printf '%s
+' '# No allure results generated' > allure-report/index.html
           fi
 
       - name: Upload Allure report artifact
