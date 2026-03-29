@@ -5,7 +5,7 @@ from datetime import datetime
 from requests import Response
 
 import config.settings as settings
-from helpers.decorators import api_error_handler, retry
+from helpers.decorators import api_error_handler
 from services.http_client import HttpClient
 from services.utils import safe_json, total_log_in_method
 
@@ -22,7 +22,6 @@ class DashboardHubService:
 
     @staticmethod
     @api_error_handler
-    @retry(attempts=3)
     def create_subscription(
         dashboard_uid: str,
         user_login: str,
