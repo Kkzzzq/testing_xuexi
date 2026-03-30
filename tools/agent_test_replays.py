@@ -52,7 +52,8 @@ def _finalize_result(
     after: dict[str, Any],
     http_steps: list[dict[str, Any]],
     intermediate: dict[str, Any],
-    observations: list[str],
+    observations: list[str] | None = None,
+    facts: dict[str, Any] | None = None,
     execution_error: str | None = None,
 ) -> dict[str, Any]:
     return {
@@ -60,7 +61,7 @@ def _finalize_result(
         "runtime": runtime,
         "http_steps": http_steps,
         "intermediate": intermediate,
-        "observations": observations,
+        "facts": facts or {},
         "execution_error": execution_error,
         "snapshot": {
             "before": before,
