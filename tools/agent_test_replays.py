@@ -756,7 +756,6 @@ def run_failed_test_replay(test_name: str, context: AgentEnvironmentContext) -> 
             "execution_error": f"unsupported failed test replay: {test_name}",
             "http_steps": [],
             "intermediate": {},
-            "observations": ["replay_unsupported_test"],
             "snapshot": {"before": {}, "after": {}, "diff": {}},
             "runtime": {},
             "supported_tests": sorted(TEST_REPLAY_HANDLERS),
@@ -774,7 +773,6 @@ def run_failed_test_replay(test_name: str, context: AgentEnvironmentContext) -> 
             "execution_error": str(exc),
             "http_steps": [],
             "intermediate": {},
-            "observations": ["replay_execution_failed"],
             "snapshot": {"before": {}, "after": {}, "diff": {}},
             "runtime": {},
         }

@@ -91,7 +91,6 @@ def run_agent() -> tuple[dict[str, Any], list[dict[str, Any]]]:
                 "http_steps": replay_result.get("http_steps", []),
                 "intermediate": replay_result.get("intermediate", {}),
                 "execution_error": replay_result.get("execution_error"),
-                "observations": replay_result.get("observations", []),
             }
         )
 
