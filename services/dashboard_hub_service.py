@@ -117,6 +117,16 @@ class DashboardHubService:
 
     @staticmethod
     @api_error_handler
+    def get_metrics() -> Response:
+        response = DashboardHubService.client.request(
+            "GET",
+            "/metrics",
+        )
+        total_log_in_method(response)
+        return response
+
+    @staticmethod
+    @api_error_handler
     def get_agent_logs(replay_id: str, limit: int = 200) -> Response:
         response = DashboardHubService.client.request(
             "GET",
