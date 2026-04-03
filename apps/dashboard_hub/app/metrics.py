@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
+from time import perf_counter
 
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from starlette.responses import Response
@@ -30,6 +32,47 @@ SUMMARY_SOURCE_COUNT = Counter(
     "dashboard_hub_summary_source_total",
     "Total dashboard summary source count",
     ["source"],
+)
+
+GRAFANA_REQUEST_COUNT = Counter(
+    "dashboard_hub_grafana_requests_total",
+    "Total outbound Grafana API requests",
+    ["endpoint", "status"],
+)
+GRAFANA_REQUEST_LATENCY = Histogram(
+    "dashboard_hub_grafana_request_latency_seconds",
+    "Latency of outbound Grafana API requests",
+    ["endpoint"],
+)
+GRAFANA_REQUEST_FAILURE_COUNT = Counter(
+    "dashboard_hub_grafana_request_failures_total",
+    "Total failed outbound Grafana API requests",
+    ["endpoint", "reason"],
+)
+DB_OPERATION_LATENCY = Histogram(
+    "dashboard_hub_db_operation_latency_seconds",
+    "Latency of database operations",
+    ["operation"],
+)
+CACHE_OPERATION_LATENCY = Histogram(
+    "dashboard_hub_cache_operation_latency_seconds",
+    "Latency of cache operations",
+    ["operation", "cache_name"],
+)
+SUBSCRIPTION_CONFLICT_COUNT = Counter(
+    "dashboard_hub_subscription_conflicts_total",
+    "Total subscription create conflicts",
+    ["channel"],
+)
+SHARE_LINK_EXPIRED_COUNT = Counter(
+    "dashboard_hub_share_link_expired_total",
+    "Total expired share-link reads",
+    ["source"],
+)
+CACHE_INVALIDATION_COUNT = Counter(
+    "dashboard_hub_cache_invalidations_total",
+    "Total cache invalidations triggered by write operations",
+    ["cache_name", "reason"],
 )
 
 _UUID_RE = re.compile(
@@ -98,6 +141,15 @@ def normalize_metrics_path(request) -> str:
         normalized.append(segment)
 
     return "/" + "/".join(normalized)
+
+
+@contextmanager
+def observe_histogram(histogram: Histogram, *labels: str):
+    start = perf_counter()
+    try:
+        yield
+    finally:
+        histogram.labels(*labels).observe(perf_counter() - start)
 
 
 def metrics_response():

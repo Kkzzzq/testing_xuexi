@@ -26,19 +26,61 @@ from app.config import (
     GRAFANA_BASE_URL,
     demo_fault_enabled,
 )
-from app.metrics import CACHE_HIT_COUNT, CACHE_MISS_COUNT, SUMMARY_SOURCE_COUNT
+from app.metrics import (
+    CACHE_HIT_COUNT,
+    CACHE_INVALIDATION_COUNT,
+    CACHE_MISS_COUNT,
+    CACHE_OPERATION_LATENCY,
+    DB_OPERATION_LATENCY,
+    GRAFANA_REQUEST_COUNT,
+    GRAFANA_REQUEST_FAILURE_COUNT,
+    GRAFANA_REQUEST_LATENCY,
+    SHARE_LINK_EXPIRED_COUNT,
+    SUBSCRIPTION_CONFLICT_COUNT,
+    SUMMARY_SOURCE_COUNT,
+    observe_histogram,
+)
 from app.models import ShareLink, Subscription
 
 
 _GRAFANA_DASHBOARD_TIMEOUT_SECONDS = 10
 
 
+def _cache_get_json(cache_name: str, key: str):
+    with observe_histogram(CACHE_OPERATION_LATENCY, "get", cache_name):
+        return cache.get_json(key)
+
+
+def _cache_set_json(cache_name: str, key: str, value: dict, ex: int | None = None):
+    with observe_histogram(CACHE_OPERATION_LATENCY, "set", cache_name):
+        cache.set_json(key, value, ex=ex)
+
+
+def _cache_delete(cache_name: str, key: str, reason: str | None = None):
+    with observe_histogram(CACHE_OPERATION_LATENCY, "delete", cache_name):
+        cache.delete(key)
+    if reason:
+        CACHE_INVALIDATION_COUNT.labels(cache_name=cache_name, reason=reason).inc()
+
+
 def _fetch_grafana_dashboard_response(dashboard_uid: str):
-    return requests.get(
-        f"{GRAFANA_BASE_URL}/api/dashboards/uid/{dashboard_uid}",
-        auth=(GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD),
-        timeout=_GRAFANA_DASHBOARD_TIMEOUT_SECONDS,
-    )
+    endpoint = "dashboard_by_uid"
+    with observe_histogram(GRAFANA_REQUEST_LATENCY, endpoint):
+        try:
+            response = requests.get(
+                f"{GRAFANA_BASE_URL}/api/dashboards/uid/{dashboard_uid}",
+                auth=(GRAFANA_ADMIN_USER, GRAFANA_ADMIN_PASSWORD),
+                timeout=_GRAFANA_DASHBOARD_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            GRAFANA_REQUEST_COUNT.labels(endpoint=endpoint, status="exception").inc()
+            GRAFANA_REQUEST_FAILURE_COUNT.labels(endpoint=endpoint, reason=exc.__class__.__name__).inc()
+            raise
+
+    GRAFANA_REQUEST_COUNT.labels(endpoint=endpoint, status=str(response.status_code)).inc()
+    if response.status_code >= 400:
+        GRAFANA_REQUEST_FAILURE_COUNT.labels(endpoint=endpoint, reason=f"http_{response.status_code}").inc()
+    return response
 
 
 def dashboard_exists(dashboard_uid: str) -> bool:
@@ -217,9 +259,11 @@ def create_subscription(db: Session, dashboard_uid: str, user_login: str, channe
     )
     db.add(subscription)
     try:
-        db.commit()
+        with observe_histogram(DB_OPERATION_LATENCY, "subscription_create_commit"):
+            db.commit()
     except IntegrityError:
         db.rollback()
+        SUBSCRIPTION_CONFLICT_COUNT.labels(channel=channel).inc()
         record_event(
             "subscription_create_integrity_error",
             dashboard_uid=dashboard_uid,
@@ -227,9 +271,12 @@ def create_subscription(db: Session, dashboard_uid: str, user_login: str, channe
             channel=channel,
         )
         raise
-    db.refresh(subscription)
+
+    with observe_histogram(DB_OPERATION_LATENCY, "subscription_create_refresh"):
+        db.refresh(subscription)
+
     cache_key = f"dashhub:subscriptions:{dashboard_uid}"
-    cache.delete(cache_key)
+    _cache_delete("subscriptions", cache_key, reason="subscription_create")
     record_event(
         "subscription_create_finished",
         dashboard_uid=dashboard_uid,
@@ -245,7 +292,7 @@ def create_subscription(db: Session, dashboard_uid: str, user_login: str, channe
 def list_subscriptions(db: Session, dashboard_uid: str):
     cache_key = f"dashhub:subscriptions:{dashboard_uid}"
     record_event("subscription_list_started", dashboard_uid=dashboard_uid, cache_key=cache_key)
-    cached = cache.get_json(cache_key)
+    cached = _cache_get_json("subscriptions", cache_key)
     if cached is not None:
         CACHE_HIT_COUNT.labels(cache_name="subscriptions").inc()
         record_event(
@@ -259,12 +306,14 @@ def list_subscriptions(db: Session, dashboard_uid: str):
     CACHE_MISS_COUNT.labels(cache_name="subscriptions").inc()
     record_event("subscription_list_cache_miss", dashboard_uid=dashboard_uid, cache_key=cache_key)
 
-    rows = (
-        db.query(Subscription)
-        .filter(Subscription.dashboard_uid == dashboard_uid)
-        .order_by(Subscription.id.desc())
-        .all()
-    )
+    with observe_histogram(DB_OPERATION_LATENCY, "subscription_list_query"):
+        rows = (
+            db.query(Subscription)
+            .filter(Subscription.dashboard_uid == dashboard_uid)
+            .order_by(Subscription.id.desc())
+            .all()
+        )
+
     payload = {
         "dashboard_uid": dashboard_uid,
         "items": [
@@ -279,7 +328,7 @@ def list_subscriptions(db: Session, dashboard_uid: str):
             for row in rows
         ],
     }
-    cache.set_json(cache_key, payload, ex=CACHE_TTL_SECONDS)
+    _cache_set_json("subscriptions", cache_key, payload, ex=CACHE_TTL_SECONDS)
     record_event(
         "subscription_list_cache_populated",
         dashboard_uid=dashboard_uid,
@@ -291,7 +340,8 @@ def list_subscriptions(db: Session, dashboard_uid: str):
 
 def delete_subscription(db: Session, subscription_id: int):
     record_event("subscription_delete_started", subscription_id=subscription_id)
-    row = db.query(Subscription).filter(Subscription.id == subscription_id).first()
+    with observe_histogram(DB_OPERATION_LATENCY, "subscription_delete_lookup"):
+        row = db.query(Subscription).filter(Subscription.id == subscription_id).first()
     if not row:
         record_event("subscription_delete_not_found", subscription_id=subscription_id)
         return None
@@ -299,7 +349,8 @@ def delete_subscription(db: Session, subscription_id: int):
     dashboard_uid = row.dashboard_uid
     cache_key = f"dashhub:subscriptions:{dashboard_uid}"
     db.delete(row)
-    db.commit()
+    with observe_histogram(DB_OPERATION_LATENCY, "subscription_delete_commit"):
+        db.commit()
     record_event(
         "subscription_delete_db_committed",
         subscription_id=subscription_id,
@@ -307,7 +358,7 @@ def delete_subscription(db: Session, subscription_id: int):
     )
 
     if not demo_fault_enabled("subscription_cache_bug"):
-        cache.delete(cache_key)
+        _cache_delete("subscriptions", cache_key, reason="subscription_delete")
         record_event(
             "subscription_delete_cache_invalidated",
             subscription_id=subscription_id,
@@ -332,10 +383,12 @@ def create_share_link(db: Session, dashboard_uid: str, expire_at: datetime | Non
         expire_at=expire_at,
     )
     db.add(share_link)
-    db.commit()
-    db.refresh(share_link)
+    with observe_histogram(DB_OPERATION_LATENCY, "share_link_create_commit"):
+        db.commit()
+    with observe_histogram(DB_OPERATION_LATENCY, "share_link_create_refresh"):
+        db.refresh(share_link)
     cache_key = f"dashhub:share:{token}"
-    cache.set_json(cache_key, _share_link_payload(share_link), ex=CACHE_TTL_SECONDS)
+    _cache_set_json("share_link", cache_key, _share_link_payload(share_link), ex=CACHE_TTL_SECONDS)
     record_event(
         "share_link_create_finished",
         dashboard_uid=dashboard_uid,
@@ -348,29 +401,31 @@ def create_share_link(db: Session, dashboard_uid: str, expire_at: datetime | Non
 def get_share_link(db: Session, token: str):
     cache_key = f"dashhub:share:{token}"
     record_event("share_link_read_started", token=token, cache_key=cache_key)
-    cached = cache.get_json(cache_key)
+    cached = _cache_get_json("share_link", cache_key)
     if cached is not None:
         CACHE_HIT_COUNT.labels(cache_name="share_link").inc()
         record_event("share_link_cache_hit", token=token, cache_key=cache_key)
         expire_at = _parse_expire_at(cached.get("expire_at"))
         if _is_expired(expire_at):
-            cache.delete(cache_key)
+            _cache_delete("share_link", cache_key)
+            SHARE_LINK_EXPIRED_COUNT.labels(source="cache").inc()
             record_event("share_link_cache_entry_expired", token=token, cache_key=cache_key)
             return "expired"
 
-        updated_rows = (
-            db.query(ShareLink)
-            .filter(ShareLink.token == token)
-            .update({ShareLink.view_count: ShareLink.view_count + 1}, synchronize_session=False)
-        )
-        db.commit()
+        with observe_histogram(DB_OPERATION_LATENCY, "share_link_increment_after_cache_hit"):
+            updated_rows = (
+                db.query(ShareLink)
+                .filter(ShareLink.token == token)
+                .update({ShareLink.view_count: ShareLink.view_count + 1}, synchronize_session=False)
+            )
+            db.commit()
         if updated_rows == 0:
-            cache.delete(cache_key)
+            _cache_delete("share_link", cache_key)
             record_event("share_link_db_row_missing_after_cache_hit", token=token, cache_key=cache_key)
             return None
 
         cached["view_count"] = int(cached.get("view_count", 0)) + 1
-        cache.set_json(cache_key, cached, ex=CACHE_TTL_SECONDS)
+        _cache_set_json("share_link", cache_key, cached, ex=CACHE_TTL_SECONDS)
         record_event(
             "share_link_cache_refreshed_after_read",
             token=token,
@@ -382,21 +437,25 @@ def get_share_link(db: Session, token: str):
     CACHE_MISS_COUNT.labels(cache_name="share_link").inc()
     record_event("share_link_cache_miss", token=token, cache_key=cache_key)
 
-    row = db.query(ShareLink).filter(ShareLink.token == token).first()
+    with observe_histogram(DB_OPERATION_LATENCY, "share_link_read_lookup"):
+        row = db.query(ShareLink).filter(ShareLink.token == token).first()
     if not row:
-        cache.delete(cache_key)
+        _cache_delete("share_link", cache_key)
         record_event("share_link_not_found", token=token, cache_key=cache_key)
         return None
     if _is_expired(row.expire_at):
-        cache.delete(cache_key)
+        _cache_delete("share_link", cache_key)
+        SHARE_LINK_EXPIRED_COUNT.labels(source="db").inc()
         record_event("share_link_expired", token=token, cache_key=cache_key)
         return "expired"
 
     row.view_count += 1
-    db.commit()
-    db.refresh(row)
+    with observe_histogram(DB_OPERATION_LATENCY, "share_link_read_commit"):
+        db.commit()
+    with observe_histogram(DB_OPERATION_LATENCY, "share_link_read_refresh"):
+        db.refresh(row)
     payload = _share_link_payload(row)
-    cache.set_json(cache_key, payload, ex=CACHE_TTL_SECONDS)
+    _cache_set_json("share_link", cache_key, payload, ex=CACHE_TTL_SECONDS)
     record_event(
         "share_link_read_finished",
         token=token,
@@ -408,15 +467,17 @@ def get_share_link(db: Session, token: str):
 
 def delete_share_link(db: Session, token: str):
     record_event("share_link_delete_started", token=token)
-    row = db.query(ShareLink).filter(ShareLink.token == token).first()
+    with observe_histogram(DB_OPERATION_LATENCY, "share_link_delete_lookup"):
+        row = db.query(ShareLink).filter(ShareLink.token == token).first()
     if not row:
         record_event("share_link_delete_not_found", token=token)
         return None
     db.delete(row)
-    db.commit()
+    with observe_histogram(DB_OPERATION_LATENCY, "share_link_delete_commit"):
+        db.commit()
     cache_key = f"dashhub:share:{token}"
     if not demo_fault_enabled("share_link_cache_bug"):
-        cache.delete(cache_key)
+        _cache_delete("share_link", cache_key, reason="share_link_delete")
         record_event("share_link_delete_cache_invalidated", token=token, cache_key=cache_key)
     record_event("share_link_delete_finished", token=token, cache_key=cache_key)
     return row
@@ -425,7 +486,7 @@ def delete_share_link(db: Session, token: str):
 def get_dashboard_summary(dashboard_uid: str):
     cache_key = _summary_cache_key(dashboard_uid)
     record_event("summary_read_started", dashboard_uid=dashboard_uid, cache_key=cache_key)
-    cached = cache.get_json(cache_key)
+    cached = _cache_get_json("summary", cache_key)
     if cached is not None:
         CACHE_HIT_COUNT.labels(cache_name="summary").inc()
         SUMMARY_SOURCE_COUNT.labels(source=cached.get("source", "fallback")).inc()
@@ -491,7 +552,7 @@ def get_dashboard_summary(dashboard_uid: str):
             )
 
     SUMMARY_SOURCE_COUNT.labels(source=payload["source"]).inc()
-    cache.set_json(cache_key, payload, ex=CACHE_TTL_SECONDS)
+    _cache_set_json("summary", cache_key, payload, ex=CACHE_TTL_SECONDS)
     record_event(
         "summary_cache_populated",
         dashboard_uid=dashboard_uid,
