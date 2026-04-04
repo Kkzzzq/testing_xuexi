@@ -115,21 +115,21 @@ jobs:
           if [ -n '${{ inputs.duration }}' ]; then
             echo "PERF_DURATION=${{ inputs.duration }}" >> "$GITHUB_ENV"
             python - <<'PY'
-import os
-import re
+            import os
+            import re
 
-raw = """${{ inputs.duration }}""".strip()
-match = re.fullmatch(r"(\d+)([smh])", raw)
-if not match:
-    raise SystemExit(f"Unsupported duration format: {raw}")
+            raw = """${{ inputs.duration }}""".strip()
+            match = re.fullmatch(r"(\d+)([smh])", raw)
+            if not match:
+                raise SystemExit(f"Unsupported duration format: {raw}")
 
-value = int(match.group(1))
-unit = match.group(2)
-seconds = value if unit == "s" else value * 60 if unit == "m" else value * 3600
+            value = int(match.group(1))
+            unit = match.group(2)
+            seconds = value if unit == "s" else value * 60 if unit == "m" else value * 3600
 
-with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
-    fh.write(f"PERF_DURATION_SECONDS={seconds}\n")
-PY
+            with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
+                fh.write(f"PERF_DURATION_SECONDS={seconds}\n")
+            PY
           fi
 
           if [ -n '${{ inputs.wait_min_seconds }}' ]; then
@@ -156,36 +156,37 @@ PY
           echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=$LOCUST_SUBSCRIPTIONS_PER_DASHBOARD"
 
       - name: Start required services
+        shell: bash
         run: docker compose up -d --build grafana mysql redis dashboard-hub prometheus
 
       - name: Wait for services
         shell: bash
         run: |
           python - <<'PY'
-import json
-import time
-import urllib.request
+          import json
+          import time
+          import urllib.request
 
-endpoints = [
-    ("Grafana", "http://localhost:3000/api/health"),
-    ("Dashboard Hub", "http://localhost:8000/health"),
-]
+          endpoints = [
+              ("Grafana", "http://localhost:3000/api/health"),
+              ("Dashboard Hub", "http://localhost:8000/health"),
+          ]
 
-for name, url in endpoints:
-    for attempt in range(60):
-        try:
-            with urllib.request.urlopen(url, timeout=3) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-                status = payload.get("status") or payload.get("database")
-                if status in ("ok", "healthy"):
-                    print(f"{name} is ready")
-                    break
-        except Exception as exc:
-            print(f"Waiting for {name}... attempt {attempt + 1}/60: {exc}")
-        time.sleep(2)
-    else:
-        raise SystemExit(f"{name} did not become ready in time")
-PY
+          for name, url in endpoints:
+              for attempt in range(60):
+                  try:
+                      with urllib.request.urlopen(url, timeout=3) as response:
+                          payload = json.loads(response.read().decode("utf-8"))
+                          status = payload.get("status") or payload.get("database")
+                          if status in ("ok", "healthy"):
+                              print(f"{name} is ready")
+                              break
+                  except Exception as exc:
+                      print(f"Waiting for {name}... attempt {attempt + 1}/60: {exc}")
+                  time.sleep(2)
+              else:
+                  raise SystemExit(f"{name} did not become ready in time")
+          PY
 
       - name: Create performance seed data
         env:
@@ -231,10 +232,10 @@ PY
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -r requirements.txt
           python - <<'PY'
-import locust
-import redis
-print("Performance dependencies installed successfully")
-PY
+          import locust
+          import redis
+          print("Performance dependencies installed successfully")
+          PY
 
       - name: Collect metrics before load
         shell: bash
@@ -262,8 +263,8 @@ PY
       - name: Run selected performance scenario
         env:
           REDIS_HOST: localhost
-          REDIS_PORT: 6379
-          REDIS_DB: 0
+          REDIS_PORT: "6379"
+          REDIS_DB: "0"
           LOCUST_WARMUP_REQUESTS: "2"
           LOCUST_BREAKDOWN_WARMUP_REQUESTS: "2"
         shell: bash
@@ -334,6 +335,7 @@ PY
             --output perf-results/metrics-after.json
 
       - name: Assert performance thresholds
+        if: always()
         shell: bash
         run: |
           . .venv/bin/activate
@@ -357,4 +359,5 @@ PY
 
       - name: Cleanup
         if: always()
+        shell: bash
         run: docker compose down -v --remove-orphans || true
