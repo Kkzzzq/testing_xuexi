@@ -7,12 +7,19 @@ import redis
 from locust import HttpUser, between, task
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    return float(raw) if raw not in (None, '') else default
+
+
 HOT_DASHBOARD_UID = os.getenv('LOCUST_HOT_DASHBOARD_UID', '').strip()
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 REDIS_DB = int(os.getenv('REDIS_DB', '0'))
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD') or None
 WARMUP_REQUESTS = max(1, int(os.getenv('LOCUST_BREAKDOWN_WARMUP_REQUESTS', '2')))
+WAIT_MIN_SECONDS = _env_float('LOCUST_WAIT_MIN_SECONDS', 0.0)
+WAIT_MAX_SECONDS = _env_float('LOCUST_WAIT_MAX_SECONDS', 0.01)
 
 _setup_lock = gevent.lock.Semaphore()
 _setup_done = False
@@ -54,9 +61,9 @@ def _prepare_hot_key(client) -> None:
 
 
 class CacheBreakdownUser(HttpUser):
-    """缓存击穿专项：先预热热点 key，再删 key 后并发回源。"""
+    """缓存击穿专项：单热点 key 预热后立即删除，再用极低等待时间并发打穿。"""
 
-    wait_time = between(0.1, 0.4)
+    wait_time = between(WAIT_MIN_SECONDS, WAIT_MAX_SECONDS)
 
     def on_start(self):
         _prepare_hot_key(self.client)
@@ -74,4 +81,4 @@ class CacheBreakdownUser(HttpUser):
             if response.status_code == 200:
                 response.success()
             else:
-                response.failure(f'unexpected status={response.status_code}')
+                response.failure(f'unexpected status={response.status_code}, body={response.text[:200]}')

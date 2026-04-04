@@ -11,9 +11,17 @@ def _split_env(name: str) -> list[str]:
     return [item.strip() for item in raw.split(',') if item.strip()]
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    return float(raw) if raw not in (None, '') else default
+
+
 DASHBOARD_UIDS = _split_env('LOCUST_DASHBOARD_UIDS')
 CONFLICT_USER_LOGIN = os.getenv('LOCUST_CONFLICT_USER_LOGIN', 'locust_conflict_user')
 _CHANNELS = ('email', 'slack', 'webhook')
+WAIT_MIN_SECONDS = _env_float('LOCUST_WAIT_MIN_SECONDS', 0.01)
+WAIT_MAX_SECONDS = _env_float('LOCUST_WAIT_MAX_SECONDS', 0.04)
+
 _dashboard_cycle = cycle(DASHBOARD_UIDS) if DASHBOARD_UIDS else None
 _login_counter = count(1)
 _channel_counter = count(0)
@@ -34,9 +42,9 @@ def _next_channel() -> str:
 
 
 class WriteConflictUser(HttpUser):
-    """写入与冲突场景：重点压订阅创建链路。"""
+    """写入与冲突场景：更接近高并发写压力，而不是轻量功能压测。"""
 
-    wait_time = between(0.5, 1.2)
+    wait_time = between(WAIT_MIN_SECONDS, WAIT_MAX_SECONDS)
 
     @task(2)
     def create_subscription_normal(self):
@@ -59,7 +67,7 @@ class WriteConflictUser(HttpUser):
             if response.status_code == 201:
                 response.success()
             else:
-                response.failure(f'unexpected status={response.status_code}')
+                response.failure(f'unexpected status={response.status_code}, body={response.text[:200]}')
 
     @task(3)
     def create_subscription_conflict(self):

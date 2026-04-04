@@ -11,9 +11,16 @@ def _split_env(name: str) -> list[str]:
     return [item.strip() for item in raw.split(',') if item.strip()]
 
 
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    return float(raw) if raw not in (None, '') else default
+
+
 DASHBOARD_UIDS = _split_env('LOCUST_DASHBOARD_UIDS')
 SHARE_TOKENS = _split_env('LOCUST_SHARE_TOKENS')
-WARMUP_REQUESTS = max(1, int(os.getenv('LOCUST_WARMUP_REQUESTS', '3')))
+WARMUP_REQUESTS = max(1, int(os.getenv('LOCUST_WARMUP_REQUESTS', '2')))
+WAIT_MIN_SECONDS = _env_float('LOCUST_WAIT_MIN_SECONDS', 0.01)
+WAIT_MAX_SECONDS = _env_float('LOCUST_WAIT_MAX_SECONDS', 0.05)
 
 _dashboard_cycle = cycle(DASHBOARD_UIDS) if DASHBOARD_UIDS else None
 _share_cycle = cycle(SHARE_TOKENS) if SHARE_TOKENS else None
@@ -26,9 +33,9 @@ def _next_value(pool_cycle):
 
 
 class HotReadUser(HttpUser):
-    """热点读场景：以订阅列表为主，分享链接为辅。"""
+    """热点读场景：高比例读取，默认按更激进的等待时间压测。"""
 
-    wait_time = between(0.5, 1.5)
+    wait_time = between(WAIT_MIN_SECONDS, WAIT_MAX_SECONDS)
 
     def on_start(self):
         for _ in range(WARMUP_REQUESTS):
@@ -45,7 +52,7 @@ class HotReadUser(HttpUser):
                     name='/warmup/share-link',
                 )
 
-    @task(7)
+    @task(8)
     def read_subscriptions_hot(self):
         dashboard_uid = _next_value(_dashboard_cycle)
         if not dashboard_uid:
@@ -59,9 +66,9 @@ class HotReadUser(HttpUser):
             if response.status_code == 200:
                 response.success()
             else:
-                response.failure(f'unexpected status={response.status_code}')
+                response.failure(f'unexpected status={response.status_code}, body={response.text[:200]}')
 
-    @task(3)
+    @task(2)
     def read_share_link_hot(self):
         token = _next_value(_share_cycle)
         if not token:
@@ -75,4 +82,4 @@ class HotReadUser(HttpUser):
             if response.status_code == 200:
                 response.success()
             else:
-                response.failure(f'unexpected status={response.status_code}')
+                response.failure(f'unexpected status={response.status_code}, body={response.text[:200]}')
