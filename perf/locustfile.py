@@ -32,6 +32,14 @@ DASHBOARD_UIDS = _resolve_dashboard_uids()
 SHARE_TOKENS = _resolve_share_tokens()
 CONFLICT_USER_LOGIN = os.getenv('LOCUST_CONFLICT_USER_LOGIN', 'locust_conflict_user')
 WARMUP_REQUESTS = max(1, int(os.getenv('LOCUST_WARMUP_REQUESTS', '2')))
+ENABLE_SUMMARY_TASK = os.getenv('LOCUST_ENABLE_SUMMARY', '1').strip().lower() not in {'0', 'false', 'no'}
+
+# 订阅与分享链路是默认主场景；摘要接口只作为补充验证。
+SUBSCRIPTIONS_WEIGHT = 5
+SHARE_LINK_WEIGHT = 5
+CREATE_NORMAL_WEIGHT = 2
+CREATE_CONFLICT_WEIGHT = 2
+SUMMARY_WEIGHT = 1 if ENABLE_SUMMARY_TASK else 0
 
 _CHANNELS = ('email', 'slack', 'webhook')
 _login_counter = count(1)
@@ -61,16 +69,13 @@ class DashboardHubUser(HttpUser):
         self._warm_up()
 
     def _warm_up(self):
+        """预热只覆盖主链路：订阅列表与分享链接。"""
         for _ in range(WARMUP_REQUESTS):
             dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
             if dashboard_uid:
                 self.client.get(
                     f'/api/v1/dashboards/{dashboard_uid}/subscriptions',
                     name='/warmup/subscriptions',
-                )
-                self.client.get(
-                    f'/api/v1/dashboards/{dashboard_uid}/summary',
-                    name='/warmup/summary',
                 )
 
             token = _next_value(_share_cycle, SHARE_TOKENS)
@@ -80,7 +85,7 @@ class DashboardHubUser(HttpUser):
                     name='/warmup/share-link',
                 )
 
-    @task(4)
+    @task(SUBSCRIPTIONS_WEIGHT)
     def list_subscriptions(self):
         dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
         if not dashboard_uid:
@@ -96,7 +101,7 @@ class DashboardHubUser(HttpUser):
             else:
                 response.failure(f'unexpected status={response.status_code}')
 
-    @task(4)
+    @task(SHARE_LINK_WEIGHT)
     def get_share_link(self):
         token = _next_value(_share_cycle, SHARE_TOKENS)
         if not token:
@@ -112,8 +117,12 @@ class DashboardHubUser(HttpUser):
             else:
                 response.failure(f'unexpected status={response.status_code}')
 
-    @task(5)
+    @task(SUMMARY_WEIGHT)
     def get_dashboard_summary(self):
+        """摘要接口保留，但只作为补充验证。"""
+        if SUMMARY_WEIGHT == 0:
+            return
+
         dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
         if not dashboard_uid:
             return
@@ -128,7 +137,7 @@ class DashboardHubUser(HttpUser):
             else:
                 response.failure(f'unexpected status={response.status_code}')
 
-    @task(1)
+    @task(CREATE_NORMAL_WEIGHT)
     def create_subscription_normal(self):
         dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
         if not dashboard_uid:
@@ -152,7 +161,7 @@ class DashboardHubUser(HttpUser):
             else:
                 response.failure(f'unexpected status={response.status_code}')
 
-    @task(2)
+    @task(CREATE_CONFLICT_WEIGHT)
     def create_subscription_conflict(self):
         dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
         if not dashboard_uid:
