@@ -31,7 +31,7 @@ TARGET_METRICS = (
     'dashboard_hub_summary_source_total',
 )
 
-_METRIC_LINE_RE = re.compile(r'^(?P<name>[a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(?P<labels>[^}]*)\})?\s+(?P<value>[-+eE0-9.]+)$')
+_METRIC_NAME_RE = re.compile(r'^[a-zA-Z_:][a-zA-Z0-9_:]*$')
 _LABEL_RE = re.compile(r'(\w+)="((?:[^"\\]|\\.)*)"')
 
 
@@ -46,22 +46,53 @@ def _fetch_metrics_text(metrics_url: str) -> str:
         return response.read().decode('utf-8')
 
 
+def _split_metric_line(line: str) -> tuple[str, str | None, float] | None:
+    stripped = line.strip()
+    if not stripped or stripped.startswith('#'):
+        return None
+
+    try:
+        metric_part, value_part = stripped.rsplit(None, 1)
+    except ValueError:
+        return None
+
+    try:
+        value = float(value_part)
+    except ValueError:
+        return None
+
+    if '{' not in metric_part:
+        if not _METRIC_NAME_RE.fullmatch(metric_part):
+            return None
+        return metric_part, None, value
+
+    brace_start = metric_part.find('{')
+    if brace_start <= 0 or not metric_part.endswith('}'):
+        return None
+
+    name = metric_part[:brace_start]
+    if not _METRIC_NAME_RE.fullmatch(name):
+        return None
+
+    labels = metric_part[brace_start + 1 : -1]
+    return name, labels, value
+
+
+
 def _parse_metrics(text: str) -> list[dict[str, Any]]:
     samples: list[dict[str, Any]] = []
     for line in text.splitlines():
-        if not line or line.startswith('#'):
+        parsed = _split_metric_line(line)
+        if parsed is None:
             continue
-        match = _METRIC_LINE_RE.match(line.strip())
-        if not match:
-            continue
-        name = match.group('name')
+        name, raw_labels, value = parsed
         if name not in TARGET_METRICS:
             continue
         samples.append(
             {
                 'name': name,
-                'labels': _parse_labels(match.group('labels')),
-                'value': float(match.group('value')),
+                'labels': _parse_labels(raw_labels),
+                'value': value,
             }
         )
     return samples

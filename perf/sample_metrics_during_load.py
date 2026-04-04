@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import time
+import traceback
 from pathlib import Path
 
 from perf.collect_metrics_snapshot import build_snapshot
@@ -24,12 +25,21 @@ def main() -> int:
         if elapsed > args.duration_seconds:
             break
 
-        samples.append(
-            {
+        try:
+            sample_payload = {
                 'elapsed_seconds': round(elapsed, 2),
                 'snapshot': build_snapshot(args.metrics_url),
             }
-        )
+        except Exception as exc:
+            sample_payload = {
+                'elapsed_seconds': round(elapsed, 2),
+                'error': {
+                    'type': exc.__class__.__name__,
+                    'message': str(exc),
+                    'traceback': traceback.format_exc(),
+                },
+            }
+        samples.append(sample_payload)
         time.sleep(max(1, args.interval_seconds))
 
     payload = {
