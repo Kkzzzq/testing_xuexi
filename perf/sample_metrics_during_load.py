@@ -6,7 +6,10 @@ import time
 import traceback
 from pathlib import Path
 
-from perf.collect_metrics_snapshot import build_snapshot
+try:
+    from perf.collect_metrics_snapshot import build_snapshot
+except ModuleNotFoundError:
+    from collect_metrics_snapshot import build_snapshot
 
 
 def main() -> int:
@@ -39,6 +42,7 @@ def main() -> int:
                     'traceback': traceback.format_exc(),
                 },
             }
+
         samples.append(sample_payload)
         time.sleep(max(1, args.interval_seconds))
 
