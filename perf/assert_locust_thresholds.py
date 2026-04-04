@@ -5,33 +5,35 @@ import csv
 from pathlib import Path
 
 
-DEFAULT_RULES = {
-    '/api/v1/dashboards/{dashboard_uid}/subscriptions': {
-        'max_p95_ms': 800,
-        'max_failures': 0,
-        'required': True,
+PROFILES = {
+    'hot_read': {
+        '/api/v1/dashboards/{dashboard_uid}/subscriptions:hot_read': {
+            'max_p95_ms': 800,
+            'max_failures': 0,
+        },
+        '/api/v1/share-links/{token}:hot_read': {'max_p95_ms': 900, 'max_failures': 0},
+        'Aggregated': {'max_error_rate': 0.01},
     },
-    '/api/v1/share-links/{token}': {
-        'max_p95_ms': 800,
-        'max_failures': 0,
-        'required': True,
+    'write_conflict': {
+        '/api/v1/subscriptions:create_normal': {'max_p95_ms': 1200, 'max_failures': 0},
+        '/api/v1/subscriptions:create_conflict': {'max_p95_ms': 1200, 'max_failures': 0},
+        'Aggregated': {'max_error_rate': 0.01},
     },
-    '/api/v1/subscriptions:create_normal': {
-        'max_p95_ms': 1200,
-        'max_failures': 0,
-        'required': True,
+    'cache_penetration': {
+        '/api/v1/share-links/{token}:penetration': {'max_p95_ms': 900, 'max_failures': 0},
+        '/api/v1/dashboards/{dashboard_uid}/subscriptions:penetration': {
+            'max_p95_ms': 1100,
+            'max_failures': 0,
+        },
+        'Aggregated': {'max_error_rate': 0.01},
     },
-    '/api/v1/subscriptions:create_conflict': {
-        'max_p95_ms': 1200,
-        'max_failures': 0,
-        'required': True,
+    'cache_breakdown': {
+        '/api/v1/dashboards/{dashboard_uid}/subscriptions:breakdown': {
+            'max_p95_ms': 1300,
+            'max_failures': 0,
+        },
+        'Aggregated': {'max_error_rate': 0.01},
     },
-    '/api/v1/dashboards/{dashboard_uid}/summary': {
-        'max_p95_ms': 2500,
-        'max_failures': 0,
-        'required': False,
-    },
-    'Aggregated': {'max_error_rate': 0.01, 'required': True},
 }
 
 
@@ -58,14 +60,14 @@ def load_rows(csv_path: Path) -> dict[str, dict[str, str]]:
     return rows
 
 
-def assert_thresholds(rows: dict[str, dict[str, str]]):
+def assert_thresholds(rows: dict[str, dict[str, str]], profile: str):
+    rules = PROFILES[profile]
     errors: list[str] = []
 
-    for name, rule in DEFAULT_RULES.items():
+    for name, rule in rules.items():
         row = rows.get(name)
         if row is None:
-            if rule.get('required', True):
-                errors.append(f'missing row for {name}')
+            errors.append(f'missing row for {name}')
             continue
 
         if 'max_p95_ms' in rule:
@@ -83,7 +85,9 @@ def assert_thresholds(rows: dict[str, dict[str, str]]):
             failures = _to_int(row.get('Failure Count'))
             error_rate = failures / request_count if request_count else 1.0
             if error_rate > rule['max_error_rate']:
-                errors.append(f'{name} error_rate={error_rate:.4f} > {rule["max_error_rate"]:.4f}')
+                errors.append(
+                    f'{name} error_rate={error_rate:.4f} > {rule["max_error_rate"]:.4f}'
+                )
 
     if errors:
         raise SystemExit('Performance thresholds failed:\n- ' + '\n- '.join(errors))
@@ -92,11 +96,12 @@ def assert_thresholds(rows: dict[str, dict[str, str]]):
 def main() -> int:
     parser = argparse.ArgumentParser(description='Assert Locust CSV performance thresholds')
     parser.add_argument('--csv', default='perf-results/locust_stats.csv')
+    parser.add_argument('--profile', choices=sorted(PROFILES), required=True)
     args = parser.parse_args()
 
     rows = load_rows(Path(args.csv))
-    assert_thresholds(rows)
-    print('Performance thresholds passed')
+    assert_thresholds(rows, args.profile)
+    print(f'Performance thresholds passed for profile={args.profile}')
     return 0
 
 
