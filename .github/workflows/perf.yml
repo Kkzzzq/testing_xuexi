@@ -45,6 +45,7 @@ jobs:
       - name: Choose scenario profile
         shell: bash
         run: |
+          set -euo pipefail
           scenario="${{ inputs.scenario }}"
           case "$scenario" in
             hot_read)
@@ -104,6 +105,8 @@ jobs:
       - name: Apply optional overrides
         shell: bash
         run: |
+          set -euo pipefail
+
           if [ -n "${{ inputs.users }}" ]; then
             echo "PERF_USERS=${{ inputs.users }}" >> "$GITHUB_ENV"
           fi
@@ -144,6 +147,7 @@ jobs:
       - name: Print selected profile
         shell: bash
         run: |
+          set -euo pipefail
           echo "scenario=${{ inputs.scenario }}"
           echo "PERF_LOCUST_FILE=$PERF_LOCUST_FILE"
           echo "PERF_THRESHOLD_PROFILE=$PERF_THRESHOLD_PROFILE"
@@ -158,11 +162,14 @@ jobs:
 
       - name: Start required services
         shell: bash
-        run: docker compose up -d --build grafana mysql redis dashboard-hub prometheus
+        run: |
+          set -euo pipefail
+          docker compose up -d --build grafana mysql redis dashboard-hub prometheus
 
       - name: Wait for services
         shell: bash
         run: |
+          set -euo pipefail
           for i in $(seq 1 60); do
             if curl -fsS http://localhost:3000/api/health | grep -q '"database":"ok"\|"status":"ok"'; then
               echo "Grafana is ready"
@@ -197,6 +204,7 @@ jobs:
           GRAFANA_ADMIN_PASSWORD: admin
         shell: bash
         run: |
+          set -euo pipefail
           : "${LOCUST_DASHBOARD_COUNT:?LOCUST_DASHBOARD_COUNT is required}"
           : "${LOCUST_SUBSCRIPTIONS_PER_DASHBOARD:?LOCUST_SUBSCRIPTIONS_PER_DASHBOARD is required}"
           python perf/bootstrap_perf_data.py --github-env "$GITHUB_ENV"
@@ -204,6 +212,7 @@ jobs:
       - name: Validate generated seed variables
         shell: bash
         run: |
+          set -euo pipefail
           required_common=(
             LOCUST_DASHBOARD_UIDS
             LOCUST_SHARE_TOKENS
@@ -228,6 +237,7 @@ jobs:
       - name: Create virtual environment and install dependencies
         shell: bash
         run: |
+          set -euo pipefail
           python -m venv .venv
           . .venv/bin/activate
           python -m pip install --upgrade pip setuptools wheel
@@ -237,6 +247,7 @@ jobs:
       - name: Collect metrics before load
         shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
           mkdir -p perf-results
           python perf/collect_metrics_snapshot.py \
@@ -246,6 +257,7 @@ jobs:
       - name: Start metrics sampling during load
         shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
           mkdir -p perf-results
           nohup python -m perf.sample_metrics_during_load \
@@ -266,6 +278,7 @@ jobs:
           LOCUST_BREAKDOWN_WARMUP_REQUESTS: "2"
         shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
 
           required_vars=(
@@ -312,6 +325,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
           if [ -f perf-results/metrics-sampler.pid ]; then
             pid=$(cat perf-results/metrics-sampler.pid)
             if kill -0 "$pid" 2>/dev/null; then
@@ -325,6 +339,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
           mkdir -p perf-results
           python perf/collect_metrics_snapshot.py \
@@ -335,6 +350,7 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set -euo pipefail
           . .venv/bin/activate
           python perf/assert_locust_thresholds.py \
             --csv perf-results/locust_stats.csv \
@@ -344,6 +360,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p perf-results
           docker compose logs > perf-results/docker-compose.log || true
 
@@ -357,4 +374,6 @@ jobs:
       - name: Cleanup
         if: always()
         shell: bash
-        run: docker compose down -v --remove-orphans || true
+        run: |
+          set -euo pipefail
+          docker compose down -v --remove-orphans || true
