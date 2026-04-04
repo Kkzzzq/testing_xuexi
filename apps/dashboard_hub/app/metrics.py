@@ -4,7 +4,7 @@ import re
 from contextlib import contextmanager
 from time import perf_counter
 
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, Histogram, generate_latest
 from starlette.responses import Response
 
 
@@ -17,6 +17,16 @@ REQUEST_LATENCY = Histogram(
     "dashboard_hub_request_latency_seconds",
     "HTTP latency",
     ["method", "path"],
+)
+REQUEST_IN_PROGRESS = Gauge(
+    "dashboard_hub_requests_in_progress",
+    "In-flight HTTP requests",
+    ["method", "path"],
+)
+REQUEST_EXCEPTION_COUNT = Counter(
+    "dashboard_hub_request_exceptions_total",
+    "Total unhandled HTTP request exceptions",
+    ["method", "path", "exception"],
 )
 CACHE_HIT_COUNT = Counter(
     "dashboard_hub_cache_hit_total",

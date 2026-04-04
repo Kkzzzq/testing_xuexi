@@ -20,7 +20,14 @@ from app.crud import (
     list_subscriptions,
 )
 from app.database import get_db
-from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, metrics_response, normalize_metrics_path
+from app.metrics import (
+    REQUEST_COUNT,
+    REQUEST_EXCEPTION_COUNT,
+    REQUEST_IN_PROGRESS,
+    REQUEST_LATENCY,
+    metrics_response,
+    normalize_metrics_path,
+)
 from app.schemas import (
     DashboardSummaryOut,
     ShareLinkCreate,
@@ -45,7 +52,13 @@ app = FastAPI(title="Dashboard Hub", version="1.0.0", lifespan=lifespan)
 @app.middleware("http")
 async def prometheus_and_agent_log_middleware(request: Request, call_next):
     tokens = set_request_context(request.headers.get("X-Agent-Replay-Id"))
+    metrics_path = normalize_metrics_path(request)
+    in_flight = REQUEST_IN_PROGRESS.labels(request.method, metrics_path)
+    in_flight.inc()
+
     start = time.perf_counter()
+    response = None
+    status_code = 500
     record_event(
         "http_request_started",
         method=request.method,
@@ -54,13 +67,23 @@ async def prometheus_and_agent_log_middleware(request: Request, call_next):
     )
     try:
         response = await call_next(request)
+        status_code = response.status_code
         return response
+    except Exception as exc:
+        REQUEST_EXCEPTION_COUNT.labels(request.method, metrics_path, exc.__class__.__name__).inc()
+        record_event(
+            "http_request_exception",
+            method=request.method,
+            path=request.url.path,
+            error_class=exc.__class__.__name__,
+            error=str(exc),
+        )
+        raise
     finally:
         elapsed = time.perf_counter() - start
-        metrics_path = normalize_metrics_path(request)
-        status_code = getattr(locals().get("response", None), "status_code", 500)
-        REQUEST_COUNT.labels(request.method, metrics_path, status_code).inc()
+        REQUEST_COUNT.labels(request.method, metrics_path, str(status_code)).inc()
         REQUEST_LATENCY.labels(request.method, metrics_path).observe(elapsed)
+        in_flight.dec()
         record_event(
             "http_request_finished",
             method=request.method,
