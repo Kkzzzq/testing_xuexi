@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: Select the performance scenario to run
+        description: "Select the performance scenario to run"
         required: true
-        default: hot_read
+        default: "hot_read"
         type: choice
         options:
           - hot_read
@@ -14,23 +14,23 @@ on:
           - cache_penetration
           - cache_breakdown
       users:
-        description: Optional override for total Locust users
+        description: "Optional override for total Locust users"
         required: false
         default: ""
       rate:
-        description: Optional override for spawn rate per second
+        description: "Optional override for spawn rate per second"
         required: false
         default: ""
       duration:
-        description: Optional override for duration (for example 6m)
+        description: "Optional override for duration (for example 6m)"
         required: false
         default: ""
       wait_min_seconds:
-        description: Optional override for per-user minimum wait time
+        description: "Optional override for per-user minimum wait time"
         required: false
         default: ""
       wait_max_seconds:
-        description: Optional override for per-user maximum wait time
+        description: "Optional override for per-user maximum wait time"
         required: false
         default: ""
 
@@ -45,7 +45,7 @@ jobs:
       - name: Choose scenario profile
         shell: bash
         run: |
-          scenario='${{ inputs.scenario }}'
+          scenario="${{ inputs.scenario }}"
           case "$scenario" in
             hot_read)
               echo "PERF_LOCUST_FILE=perf/locust_hot_read.py" >> "$GITHUB_ENV"
@@ -104,39 +104,40 @@ jobs:
       - name: Apply optional overrides
         shell: bash
         run: |
-          if [ -n '${{ inputs.users }}' ]; then
+          if [ -n "${{ inputs.users }}" ]; then
             echo "PERF_USERS=${{ inputs.users }}" >> "$GITHUB_ENV"
           fi
 
-          if [ -n '${{ inputs.rate }}' ]; then
+          if [ -n "${{ inputs.rate }}" ]; then
             echo "PERF_RATE=${{ inputs.rate }}" >> "$GITHUB_ENV"
           fi
 
-          if [ -n '${{ inputs.duration }}' ]; then
-            echo "PERF_DURATION=${{ inputs.duration }}" >> "$GITHUB_ENV"
-            python - <<'PY'
-            import os
-            import re
+          if [ -n "${{ inputs.duration }}" ]; then
+            duration="${{ inputs.duration }}"
+            echo "PERF_DURATION=$duration" >> "$GITHUB_ENV"
 
-            raw = """${{ inputs.duration }}""".strip()
-            match = re.fullmatch(r"(\d+)([smh])", raw)
-            if not match:
-                raise SystemExit(f"Unsupported duration format: {raw}")
-
-            value = int(match.group(1))
-            unit = match.group(2)
-            seconds = value if unit == "s" else value * 60 if unit == "m" else value * 3600
-
-            with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as fh:
-                fh.write(f"PERF_DURATION_SECONDS={seconds}\n")
-            PY
+            if [[ "$duration" =~ ^([0-9]+)([smh])$ ]]; then
+              value="${BASH_REMATCH[1]}"
+              unit="${BASH_REMATCH[2]}"
+              if [ "$unit" = "s" ]; then
+                seconds="$value"
+              elif [ "$unit" = "m" ]; then
+                seconds=$((value * 60))
+              else
+                seconds=$((value * 3600))
+              fi
+              echo "PERF_DURATION_SECONDS=$seconds" >> "$GITHUB_ENV"
+            else
+              echo "Unsupported duration format: $duration" >&2
+              exit 1
+            fi
           fi
 
-          if [ -n '${{ inputs.wait_min_seconds }}' ]; then
+          if [ -n "${{ inputs.wait_min_seconds }}" ]; then
             echo "LOCUST_WAIT_MIN_SECONDS=${{ inputs.wait_min_seconds }}" >> "$GITHUB_ENV"
           fi
 
-          if [ -n '${{ inputs.wait_max_seconds }}' ]; then
+          if [ -n "${{ inputs.wait_max_seconds }}" ]; then
             echo "LOCUST_WAIT_MAX_SECONDS=${{ inputs.wait_max_seconds }}" >> "$GITHUB_ENV"
           fi
 
@@ -162,31 +163,31 @@ jobs:
       - name: Wait for services
         shell: bash
         run: |
-          python - <<'PY'
-          import json
-          import time
-          import urllib.request
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/api/health | grep -q '"database":"ok"\|"status":"ok"'; then
+              echo "Grafana is ready"
+              break
+            fi
+            echo "Waiting for Grafana... $i/60"
+            sleep 2
+            if [ "$i" -eq 60 ]; then
+              echo "Grafana did not become ready in time" >&2
+              exit 1
+            fi
+          done
 
-          endpoints = [
-              ("Grafana", "http://localhost:3000/api/health"),
-              ("Dashboard Hub", "http://localhost:8000/health"),
-          ]
-
-          for name, url in endpoints:
-              for attempt in range(60):
-                  try:
-                      with urllib.request.urlopen(url, timeout=3) as response:
-                          payload = json.loads(response.read().decode("utf-8"))
-                          status = payload.get("status") or payload.get("database")
-                          if status in ("ok", "healthy"):
-                              print(f"{name} is ready")
-                              break
-                  except Exception as exc:
-                      print(f"Waiting for {name}... attempt {attempt + 1}/60: {exc}")
-                  time.sleep(2)
-              else:
-                  raise SystemExit(f"{name} did not become ready in time")
-          PY
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8000/health | grep -q '"status":"healthy"\|"database":"healthy"\|"status":"ok"'; then
+              echo "Dashboard Hub is ready"
+              break
+            fi
+            echo "Waiting for Dashboard Hub... $i/60"
+            sleep 2
+            if [ "$i" -eq 60 ]; then
+              echo "Dashboard Hub did not become ready in time" >&2
+              exit 1
+            fi
+          done
 
       - name: Create performance seed data
         env:
@@ -231,11 +232,7 @@ jobs:
           . .venv/bin/activate
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install -r requirements.txt
-          python - <<'PY'
-          import locust
-          import redis
-          print("Performance dependencies installed successfully")
-          PY
+          python -c "import locust, redis; print('Performance dependencies installed successfully')"
 
       - name: Collect metrics before load
         shell: bash
