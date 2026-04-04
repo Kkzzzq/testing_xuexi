@@ -12,7 +12,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Start required services
-        run: docker compose up -d --build grafana mysql redis dashboard-hub
+        run: docker compose up -d --build grafana mysql redis dashboard-hub prometheus
 
       - name: Wait for services
         run: |
@@ -22,83 +22,34 @@ jobs:
           import urllib.request
 
           endpoints = [
-              ("Grafana", "http://localhost:3000/api/health"),
-              ("Dashboard Hub", "http://localhost:8000/health"),
+              ('Grafana', 'http://localhost:3000/api/health'),
+              ('Dashboard Hub', 'http://localhost:8000/health'),
           ]
 
           for name, url in endpoints:
               for attempt in range(60):
                   try:
                       with urllib.request.urlopen(url, timeout=3) as response:
-                          payload = json.loads(response.read().decode("utf-8"))
-                          status = payload.get("status") or payload.get("database")
-                          if status in ("ok", "healthy"):
-                              print(f"{name} is ready")
+                          payload = json.loads(response.read().decode('utf-8'))
+                          status = payload.get('status') or payload.get('database')
+                          if status in ('ok', 'healthy'):
+                              print(f'{name} is ready')
                               break
                   except Exception as exc:
-                      print(f"Waiting for {name}... attempt {attempt + 1}/60: {exc}")
+                      print(f'Waiting for {name}... attempt {attempt + 1}/60: {exc}')
                   time.sleep(2)
               else:
-                  raise SystemExit(f"{name} did not become ready in time")
+                  raise SystemExit(f'{name} did not become ready in time')
           PY
 
-      - name: Create perf dashboard and share link
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import urllib.request
-          from datetime import datetime, timedelta, timezone
-
-          github_env = os.environ["GITHUB_ENV"]
-
-          dashboard_payload = {
-              "dashboard": {
-                  "id": None,
-                  "uid": "locust-dashboard",
-                  "title": "Locust Dashboard",
-                  "timezone": "browser",
-                  "schemaVersion": 39,
-                  "version": 0,
-                  "panels": [],
-              },
-              "overwrite": True,
-          }
-
-          req = urllib.request.Request(
-              "http://localhost:3000/api/dashboards/db",
-              data=json.dumps(dashboard_payload).encode("utf-8"),
-              headers={
-                  "Content-Type": "application/json",
-                  "Authorization": "Basic YWRtaW46YWRtaW4=",
-              },
-              method="POST",
-          )
-          with urllib.request.urlopen(req, timeout=10) as response:
-              dashboard_result = json.loads(response.read().decode("utf-8"))
-
-          dashboard_uid = dashboard_result["uid"]
-
-          expire_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
-          share_payload = {
-              "dashboard_uid": dashboard_uid,
-              "expire_at": expire_at,
-          }
-
-          req = urllib.request.Request(
-              "http://localhost:8000/api/v1/share-links",
-              data=json.dumps(share_payload).encode("utf-8"),
-              headers={"Content-Type": "application/json"},
-              method="POST",
-          )
-          with urllib.request.urlopen(req, timeout=10) as response:
-              share_result = json.loads(response.read().decode("utf-8"))
-
-          with open(github_env, "a", encoding="utf-8") as fh:
-              fh.write(f"LOCUST_DASHBOARD_UID={dashboard_uid}\n")
-              fh.write(f"LOCUST_SHARE_TOKEN={share_result['token']}\n")
-              fh.write("LOCUST_CONFLICT_USER_LOGIN=locust_conflict_user\n")
-          PY
+      - name: Create performance seed data
+        env:
+          GRAFANA_BASE_URL: http://localhost:3000
+          DASHBOARD_HUB_BASE_URL: http://localhost:8000
+          GRAFANA_ADMIN_USER: admin
+          GRAFANA_ADMIN_PASSWORD: admin
+          LOCUST_DASHBOARD_COUNT: 5
+        run: python perf/bootstrap_perf_data.py --github-env "$GITHUB_ENV"
 
       - name: Create virtual environment and install dependencies
         run: |
@@ -112,22 +63,35 @@ jobs:
           import gevent
           import zope.event
           import zope.interface
-          print("Locust dependencies installed successfully")
+          print('Locust dependencies installed successfully')
           PY
+
+      - name: Collect metrics before load
+        run: |
+          mkdir -p perf-results
+          python perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-before.json
 
       - name: Run Locust headless
         env:
-          LOCUST_DASHBOARD_UID: ${{ env.LOCUST_DASHBOARD_UID }}
-          LOCUST_SHARE_TOKEN: ${{ env.LOCUST_SHARE_TOKEN }}
+          LOCUST_DASHBOARD_UIDS: ${{ env.LOCUST_DASHBOARD_UIDS }}
+          LOCUST_SHARE_TOKENS: ${{ env.LOCUST_SHARE_TOKENS }}
           LOCUST_CONFLICT_USER_LOGIN: ${{ env.LOCUST_CONFLICT_USER_LOGIN }}
+          LOCUST_WARMUP_REQUESTS: 2
         run: |
           . .venv/bin/activate
           mkdir -p perf-results
-          locust -f perf/locustfile.py \
-            --host http://localhost:8000 \
-            --headless \
-            -u 20 -r 5 -t 3m \
-            --csv=perf-results/locust
+          locust -f perf/locustfile.py             --host http://localhost:8000             --headless             -u 30 -r 5 -t 4m             --csv=perf-results/locust             --html=perf-results/locust-report.html
+
+      - name: Collect metrics after load
+        if: always()
+        run: |
+          mkdir -p perf-results
+          python perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-after.json
+
+      - name: Assert performance thresholds
+        run: |
+          . .venv/bin/activate
+          python perf/assert_locust_thresholds.py --csv perf-results/locust_stats.csv
 
       - name: Collect container logs on failure
         if: failure()
