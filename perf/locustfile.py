@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from itertools import count, cycle
-from typing import Iterable
 
 from locust import HttpUser, between, task
 
@@ -32,14 +31,7 @@ DASHBOARD_UIDS = _resolve_dashboard_uids()
 SHARE_TOKENS = _resolve_share_tokens()
 CONFLICT_USER_LOGIN = os.getenv('LOCUST_CONFLICT_USER_LOGIN', 'locust_conflict_user')
 WARMUP_REQUESTS = max(1, int(os.getenv('LOCUST_WARMUP_REQUESTS', '2')))
-ENABLE_SUMMARY_TASK = os.getenv('LOCUST_ENABLE_SUMMARY', '1').strip().lower() not in {'0', 'false', 'no'}
-
-# 订阅与分享链路是默认主场景；摘要接口只作为补充验证。
-SUBSCRIPTIONS_WEIGHT = 5
-SHARE_LINK_WEIGHT = 5
-CREATE_NORMAL_WEIGHT = 2
-CREATE_CONFLICT_WEIGHT = 2
-SUMMARY_WEIGHT = 1 if ENABLE_SUMMARY_TASK else 0
+ENABLE_SUMMARY = os.getenv('LOCUST_ENABLE_SUMMARY', 'true').strip().lower() not in {'0', 'false', 'no'}
 
 _CHANNELS = ('email', 'slack', 'webhook')
 _login_counter = count(1)
@@ -56,7 +48,7 @@ def _next_channel() -> str:
     return _CHANNELS[next(_channel_counter) % len(_CHANNELS)]
 
 
-def _next_value(pool_cycle, values: Iterable[str]) -> str | None:
+def _next_value(pool_cycle) -> str | None:
     if pool_cycle is None:
         return None
     return next(pool_cycle)
@@ -69,25 +61,24 @@ class DashboardHubUser(HttpUser):
         self._warm_up()
 
     def _warm_up(self):
-        """预热只覆盖主链路：订阅列表与分享链接。"""
         for _ in range(WARMUP_REQUESTS):
-            dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
+            dashboard_uid = _next_value(_dashboard_cycle)
             if dashboard_uid:
                 self.client.get(
                     f'/api/v1/dashboards/{dashboard_uid}/subscriptions',
                     name='/warmup/subscriptions',
                 )
 
-            token = _next_value(_share_cycle, SHARE_TOKENS)
+            token = _next_value(_share_cycle)
             if token:
                 self.client.get(
                     f'/api/v1/share-links/{token}',
                     name='/warmup/share-link',
                 )
 
-    @task(SUBSCRIPTIONS_WEIGHT)
+    @task(5)
     def list_subscriptions(self):
-        dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
+        dashboard_uid = _next_value(_dashboard_cycle)
         if not dashboard_uid:
             return
 
@@ -101,9 +92,9 @@ class DashboardHubUser(HttpUser):
             else:
                 response.failure(f'unexpected status={response.status_code}')
 
-    @task(SHARE_LINK_WEIGHT)
+    @task(5)
     def get_share_link(self):
-        token = _next_value(_share_cycle, SHARE_TOKENS)
+        token = _next_value(_share_cycle)
         if not token:
             return
 
@@ -117,13 +108,12 @@ class DashboardHubUser(HttpUser):
             else:
                 response.failure(f'unexpected status={response.status_code}')
 
-    @task(SUMMARY_WEIGHT)
+    @task(1)
     def get_dashboard_summary(self):
-        """摘要接口保留，但只作为补充验证。"""
-        if SUMMARY_WEIGHT == 0:
+        if not ENABLE_SUMMARY:
             return
 
-        dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
+        dashboard_uid = _next_value(_dashboard_cycle)
         if not dashboard_uid:
             return
 
@@ -137,9 +127,9 @@ class DashboardHubUser(HttpUser):
             else:
                 response.failure(f'unexpected status={response.status_code}')
 
-    @task(CREATE_NORMAL_WEIGHT)
+    @task(2)
     def create_subscription_normal(self):
-        dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
+        dashboard_uid = _next_value(_dashboard_cycle)
         if not dashboard_uid:
             return
 
@@ -159,11 +149,11 @@ class DashboardHubUser(HttpUser):
             if response.status_code == 201:
                 response.success()
             else:
-                response.failure(f'unexpected status={response.status_code}')
+                response.failure(f'unexpected status={response.status_code}, body={response.text[:200]}')
 
-    @task(CREATE_CONFLICT_WEIGHT)
+    @task(2)
     def create_subscription_conflict(self):
-        dashboard_uid = _next_value(_dashboard_cycle, DASHBOARD_UIDS)
+        dashboard_uid = _next_value(_dashboard_cycle)
         if not dashboard_uid:
             return
 

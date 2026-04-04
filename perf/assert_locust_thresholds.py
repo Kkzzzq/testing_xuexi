@@ -6,18 +6,32 @@ from pathlib import Path
 
 
 DEFAULT_RULES = {
-    # 主链路：以订阅与分享为核心。
-    '/api/v1/dashboards/{dashboard_uid}/subscriptions': {'max_p95_ms': 800, 'max_failures': 0},
-    '/api/v1/share-links/{token}': {'max_p95_ms': 800, 'max_failures': 0},
-    '/api/v1/subscriptions:create_normal': {'max_p95_ms': 1200, 'max_failures': 0},
-    '/api/v1/subscriptions:create_conflict': {'max_p95_ms': 1200, 'max_failures': 0},
-    # 补充链路：摘要不再作为默认强校验项，保留为可选观察指标。
+    '/api/v1/dashboards/{dashboard_uid}/subscriptions': {
+        'max_p95_ms': 800,
+        'max_failures': 0,
+        'required': True,
+    },
+    '/api/v1/share-links/{token}': {
+        'max_p95_ms': 800,
+        'max_failures': 0,
+        'required': True,
+    },
+    '/api/v1/subscriptions:create_normal': {
+        'max_p95_ms': 1200,
+        'max_failures': 0,
+        'required': True,
+    },
+    '/api/v1/subscriptions:create_conflict': {
+        'max_p95_ms': 1200,
+        'max_failures': 0,
+        'required': True,
+    },
     '/api/v1/dashboards/{dashboard_uid}/summary': {
         'max_p95_ms': 2500,
         'max_failures': 0,
         'required': False,
     },
-    'Aggregated': {'max_error_rate': 0.01},
+    'Aggregated': {'max_error_rate': 0.01, 'required': True},
 }
 
 
