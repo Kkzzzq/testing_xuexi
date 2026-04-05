@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import os
+from urllib.parse import urljoin
 
 import gevent.lock
 import redis
+import requests
 from locust import HttpUser, between, task
 
 
@@ -18,6 +20,7 @@ REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
 REDIS_DB = int(os.getenv('REDIS_DB', '0'))
 REDIS_PASSWORD = os.getenv('REDIS_PASSWORD') or None
 WARMUP_REQUESTS = max(1, int(os.getenv('LOCUST_BREAKDOWN_WARMUP_REQUESTS', '2')))
+WARMUP_TIMEOUT_SECONDS = _env_float('LOCUST_WARMUP_TIMEOUT_SECONDS', 5.0)
 WAIT_MIN_SECONDS = _env_float('LOCUST_WAIT_MIN_SECONDS', 0.0)
 WAIT_MAX_SECONDS = _env_float('LOCUST_WAIT_MAX_SECONDS', 0.01)
 
@@ -29,7 +32,12 @@ def _subscriptions_cache_key(dashboard_uid: str) -> str:
     return f'dashhub:subscriptions:{dashboard_uid}'
 
 
-def _prepare_hot_key(client) -> None:
+def _base_url(user: HttpUser) -> str:
+    host = getattr(user.environment, 'host', None) or getattr(user, 'host', None) or ''
+    return host.rstrip('/') + '/'
+
+
+def _prepare_hot_key(user: HttpUser) -> None:
     global _setup_done
     if _setup_done or not HOT_DASHBOARD_UID:
         return
@@ -39,9 +47,9 @@ def _prepare_hot_key(client) -> None:
             return
 
         for _ in range(WARMUP_REQUESTS):
-            response = client.get(
-                f'/api/v1/dashboards/{HOT_DASHBOARD_UID}/subscriptions',
-                name='/setup/subscriptions:warm_cache',
+            response = requests.get(
+                urljoin(_base_url(user), f'/api/v1/dashboards/{HOT_DASHBOARD_UID}/subscriptions'),
+                timeout=WARMUP_TIMEOUT_SECONDS,
             )
             if response.status_code != 200:
                 raise RuntimeError(
@@ -66,7 +74,7 @@ class CacheBreakdownUser(HttpUser):
     wait_time = between(WAIT_MIN_SECONDS, WAIT_MAX_SECONDS)
 
     def on_start(self):
-        _prepare_hot_key(self.client)
+        _prepare_hot_key(self)
 
     @task
     def hit_broken_hot_key(self):

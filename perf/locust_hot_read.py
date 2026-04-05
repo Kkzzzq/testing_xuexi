@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import os
 from itertools import cycle
+from urllib.parse import urljoin
 
+import requests
 from gevent.lock import Semaphore
 from locust import HttpUser, between, task
 
@@ -20,6 +22,7 @@ def _env_float(name: str, default: float) -> float:
 DASHBOARD_UIDS = _split_env('LOCUST_DASHBOARD_UIDS')
 SHARE_TOKENS = _split_env('LOCUST_SHARE_TOKENS')
 WARMUP_REQUESTS = max(1, int(os.getenv('LOCUST_WARMUP_REQUESTS', '2')))
+WARMUP_TIMEOUT_SECONDS = _env_float('LOCUST_WARMUP_TIMEOUT_SECONDS', 5.0)
 WAIT_MIN_SECONDS = _env_float('LOCUST_WAIT_MIN_SECONDS', 0.01)
 WAIT_MAX_SECONDS = _env_float('LOCUST_WAIT_MAX_SECONDS', 0.05)
 
@@ -33,6 +36,17 @@ def _next_value(pool_cycle):
     if pool_cycle is None:
         return None
     return next(pool_cycle)
+
+
+def _base_url(user: HttpUser) -> str:
+    host = getattr(user.environment, 'host', None) or getattr(user, 'host', None) or ''
+    return host.rstrip('/') + '/'
+
+
+def _warmup_get(user: HttpUser, path: str) -> None:
+    response = requests.get(urljoin(_base_url(user), path.lstrip('/')), timeout=WARMUP_TIMEOUT_SECONDS)
+    if response.status_code != 200:
+        raise RuntimeError(f'warmup request failed for {path}: status={response.status_code}, body={response.text[:200]}')
 
 
 class HotReadUser(HttpUser):
@@ -53,16 +67,10 @@ class HotReadUser(HttpUser):
             for _ in range(WARMUP_REQUESTS):
                 dashboard_uid = _next_value(_dashboard_cycle)
                 if dashboard_uid:
-                    self.client.get(
-                        f'/api/v1/dashboards/{dashboard_uid}/subscriptions',
-                        name='/warmup/subscriptions',
-                    )
+                    _warmup_get(self, f'/api/v1/dashboards/{dashboard_uid}/subscriptions')
                 token = _next_value(_share_cycle)
                 if token:
-                    self.client.get(
-                        f'/api/v1/share-links/{token}',
-                        name='/warmup/share-link',
-                    )
+                    _warmup_get(self, f'/api/v1/share-links/{token}')
 
             _warmup_done = True
 

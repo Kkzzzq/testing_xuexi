@@ -38,13 +38,13 @@ PROFILES = {
 
 
 def _to_float(value: str | None, default: float = 0.0) -> float:
-    if value in (None, ''):
+    if value in (None, '', 'N/A', 'n/a', 'nan', 'NaN'):
         return default
     return float(value)
 
 
 def _to_int(value: str | None, default: int = 0) -> int:
-    if value in (None, ''):
+    if value in (None, '', 'N/A', 'n/a', 'nan', 'NaN'):
         return default
     return int(float(value))
 
@@ -71,9 +71,13 @@ def assert_thresholds(rows: dict[str, dict[str, str]], profile: str):
             continue
 
         if 'max_p95_ms' in rule:
-            p95 = _to_float(row.get('95%'))
-            if p95 > rule['max_p95_ms']:
-                errors.append(f'{name} p95={p95}ms > {rule["max_p95_ms"]}ms')
+            raw_p95 = row.get('95%')
+            if raw_p95 in (None, '', 'N/A', 'n/a'):
+                errors.append(f'missing or invalid p95 value for {name}')
+            else:
+                p95 = _to_float(raw_p95)
+                if p95 > rule['max_p95_ms']:
+                    errors.append(f'{name} p95={p95}ms > {rule["max_p95_ms"]}ms')
 
         if 'max_failures' in rule:
             failures = _to_int(row.get('Failure Count'))
@@ -83,11 +87,14 @@ def assert_thresholds(rows: dict[str, dict[str, str]], profile: str):
         if 'max_error_rate' in rule:
             request_count = _to_int(row.get('Request Count'))
             failures = _to_int(row.get('Failure Count'))
-            error_rate = failures / request_count if request_count else 1.0
-            if error_rate > rule['max_error_rate']:
-                errors.append(
-                    f'{name} error_rate={error_rate:.4f} > {rule["max_error_rate"]:.4f}'
-                )
+            if request_count <= 0:
+                errors.append(f'{name} request_count is missing or zero')
+            else:
+                error_rate = failures / request_count
+                if error_rate > rule['max_error_rate']:
+                    errors.append(
+                        f'{name} error_rate={error_rate:.4f} > {rule["max_error_rate"]:.4f}'
+                    )
 
     if errors:
         raise SystemExit('Performance thresholds failed:\n- ' + '\n- '.join(errors))

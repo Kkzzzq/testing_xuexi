@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,49 @@ def _request_json(
     except urllib.error.URLError as exc:
         raise RuntimeError(f'Failed to call {method} {url}: {exc.reason}') from exc
 
+
+
+
+def _is_retryable_error(message: str, retryable_status_codes: set[int] | None = None) -> bool:
+    if 'Failed to call' in message:
+        return True
+    statuses = retryable_status_codes or {404, 409, 429, 500, 502, 503, 504}
+    return any(f'HTTP {status} ' in message for status in statuses)
+
+
+def _request_json_with_retry(
+    url: str,
+    method: str = 'GET',
+    headers: dict[str, str] | None = None,
+    payload: dict | None = None,
+    *,
+    attempts: int = 5,
+    initial_sleep_seconds: float = 0.5,
+    retryable_status_codes: set[int] | None = None,
+):
+    last_error: RuntimeError | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return _request_json(url, method=method, headers=headers, payload=payload)
+        except RuntimeError as exc:
+            last_error = exc
+            if attempt >= attempts or not _is_retryable_error(str(exc), retryable_status_codes):
+                raise
+            time.sleep(initial_sleep_seconds * attempt)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f'failed to call {method} {url}')
+
+
+def _wait_until_dashboard_readable(grafana_base_url: str, dashboard_uid: str, auth_header: str) -> None:
+    _request_json_with_retry(
+        f'{grafana_base_url}/api/dashboards/uid/{dashboard_uid}',
+        method='GET',
+        headers={'Authorization': auth_header},
+        attempts=8,
+        initial_sleep_seconds=0.5,
+        retryable_status_codes={404, 500, 502, 503, 504},
+    )
 
 def create_perf_seed_data(
     grafana_base_url: str,
@@ -78,7 +122,7 @@ def create_perf_seed_data(
             },
             'overwrite': True,
         }
-        dashboard_result = _request_json(
+        dashboard_result = _request_json_with_retry(
             f'{grafana_base_url}/api/dashboards/db',
             method='POST',
             headers={
@@ -89,9 +133,10 @@ def create_perf_seed_data(
         )
         dashboard_uid = dashboard_result['uid']
         dashboard_uids.append(dashboard_uid)
+        _wait_until_dashboard_readable(grafana_base_url, dashboard_uid, auth_header)
 
         for subscription_index in range(1, subscriptions_per_dashboard + 1):
-            _request_json(
+            _request_json_with_retry(
                 f'{dashboard_hub_base_url}/api/v1/subscriptions',
                 method='POST',
                 headers={'Content-Type': 'application/json'},
@@ -104,7 +149,7 @@ def create_perf_seed_data(
             )
 
         expire_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
-        share_result = _request_json(
+        share_result = _request_json_with_retry(
             f'{dashboard_hub_base_url}/api/v1/share-links',
             method='POST',
             headers={'Content-Type': 'application/json'},
@@ -112,8 +157,11 @@ def create_perf_seed_data(
         )
         share_tokens.append(share_result['token'])
 
-    hot_dashboard_uid = dashboard_uids[0] if dashboard_uids else ''
-    hot_share_token = share_tokens[0] if share_tokens else ''
+    if not dashboard_uids or not share_tokens:
+        raise RuntimeError('performance seed data generation did not produce dashboards/share links')
+
+    hot_dashboard_uid = dashboard_uids[0]
+    hot_share_token = share_tokens[0]
     return dashboard_uids, share_tokens, hot_dashboard_uid, hot_share_token
 
 
