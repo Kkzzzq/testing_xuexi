@@ -42,6 +42,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare workflow paths and diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p perf-results
+          pybin="$(command -v python3 || command -v python)"
+          echo "PERF_RESULTS_DIR=$GITHUB_WORKSPACE/perf-results" >> "$GITHUB_ENV"
+          echo "VENV_DIR=$GITHUB_WORKSPACE/.venv" >> "$GITHUB_ENV"
+          echo "VENV_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
+          echo "VENV_LOCUST=$GITHUB_WORKSPACE/.venv/bin/locust" >> "$GITHUB_ENV"
+          echo "PYTHON_BIN=$pybin" >> "$GITHUB_ENV"
+          {
+            echo "pwd=$PWD"
+            echo "github_workspace=$GITHUB_WORKSPACE"
+            echo "python_bin=$pybin"
+            "$pybin" --version
+            "$pybin" -c 'import sys; print(sys.executable)'
+          } > perf-results/python-environment.txt
+
       - name: Choose scenario profile
         shell: bash
         run: |
@@ -126,10 +150,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY2'
+          "$PYTHON_BIN" - <<'PY2'
           import os
           import re
-          import sys
 
           raw = os.environ['PERF_DURATION'].strip().lower()
           match = re.fullmatch(r'(\d+)([smh]?)', raw)
@@ -152,28 +175,35 @@ jobs:
           echo "SERVICE_WAIT_ATTEMPTS=90" >> "$GITHUB_ENV"
           echo "SERVICE_WAIT_INTERVAL_SECONDS=2" >> "$GITHUB_ENV"
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
       - name: Print selected profile
         shell: bash
         run: |
           set -euo pipefail
-          echo "scenario=${{ inputs.scenario }}"
-          echo "PERF_LOCUST_FILE=$PERF_LOCUST_FILE"
-          echo "PERF_THRESHOLD_PROFILE=$PERF_THRESHOLD_PROFILE"
-          echo "PERF_USERS=$PERF_USERS"
-          echo "PERF_RATE=$PERF_RATE"
-          echo "PERF_DURATION=$PERF_DURATION"
-          echo "PERF_DURATION_SECONDS=$PERF_DURATION_SECONDS"
-          echo "LOCUST_WAIT_MIN_SECONDS=$LOCUST_WAIT_MIN_SECONDS"
-          echo "LOCUST_WAIT_MAX_SECONDS=$LOCUST_WAIT_MAX_SECONDS"
-          echo "LOCUST_DASHBOARD_COUNT=$LOCUST_DASHBOARD_COUNT"
-          echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=$LOCUST_SUBSCRIPTIONS_PER_DASHBOARD"
-          echo "SERVICE_WAIT_ATTEMPTS=$SERVICE_WAIT_ATTEMPTS"
-          echo "SERVICE_WAIT_INTERVAL_SECONDS=$SERVICE_WAIT_INTERVAL_SECONDS"
+          {
+            echo "scenario=${{ inputs.scenario }}"
+            echo "PERF_LOCUST_FILE=$PERF_LOCUST_FILE"
+            echo "PERF_THRESHOLD_PROFILE=$PERF_THRESHOLD_PROFILE"
+            echo "PERF_USERS=$PERF_USERS"
+            echo "PERF_RATE=$PERF_RATE"
+            echo "PERF_DURATION=$PERF_DURATION"
+            echo "PERF_DURATION_SECONDS=$PERF_DURATION_SECONDS"
+            echo "LOCUST_WAIT_MIN_SECONDS=$LOCUST_WAIT_MIN_SECONDS"
+            echo "LOCUST_WAIT_MAX_SECONDS=$LOCUST_WAIT_MAX_SECONDS"
+            echo "LOCUST_DASHBOARD_COUNT=$LOCUST_DASHBOARD_COUNT"
+            echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=$LOCUST_SUBSCRIPTIONS_PER_DASHBOARD"
+            echo "SERVICE_WAIT_ATTEMPTS=$SERVICE_WAIT_ATTEMPTS"
+            echo "SERVICE_WAIT_INTERVAL_SECONDS=$SERVICE_WAIT_INTERVAL_SECONDS"
+            echo "VENV_DIR=$VENV_DIR"
+            echo "VENV_PYTHON=$VENV_PYTHON"
+            echo "VENV_LOCUST=$VENV_LOCUST"
+            echo "PYTHON_BIN=$PYTHON_BIN"
+          } | tee perf-results/selected-profile.txt
+
+      - name: Show Docker Compose version
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose version | tee perf-results/docker-compose-version.txt
 
       - name: Start required services
         shell: bash
@@ -185,33 +215,41 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p perf-results
+
+          grafana_health_file="perf-results/grafana-health-response.json"
+          dashboard_hub_health_file="perf-results/dashboard-hub-health-response.json"
 
           for i in $(seq 1 "$SERVICE_WAIT_ATTEMPTS"); do
-            if curl -fsS http://localhost:3000/api/health | grep -q '"database":"ok"\|"status":"ok"'; then
-              echo "Grafana is ready"
+            status=0
+            curl -fsS http://localhost:3000/api/health -o "$grafana_health_file" || status=$?
+            if [ "$status" -eq 0 ] && grep -q '"database":"ok"\|"status":"ok"' "$grafana_health_file"; then
+              echo "Grafana is ready" | tee -a perf-results/service-wait.log
               break
             fi
-            echo "Waiting for Grafana... $i/$SERVICE_WAIT_ATTEMPTS"
+            echo "Waiting for Grafana... $i/$SERVICE_WAIT_ATTEMPTS" | tee -a perf-results/service-wait.log
             sleep "$SERVICE_WAIT_INTERVAL_SECONDS"
             if [ "$i" -eq "$SERVICE_WAIT_ATTEMPTS" ]; then
               echo "Grafana did not become ready in time" >&2
-              docker compose ps || true
-              docker compose logs grafana || true
+              docker compose ps > perf-results/docker-compose-ps.txt || true
+              docker compose logs --no-color grafana > perf-results/grafana.log || true
               exit 1
             fi
           done
 
           for i in $(seq 1 "$SERVICE_WAIT_ATTEMPTS"); do
-            if curl -fsS http://localhost:8000/health | grep -q '"status":"healthy"\|"database":"healthy"\|"status":"ok"'; then
-              echo "Dashboard Hub is ready"
+            status=0
+            curl -fsS http://localhost:8000/health -o "$dashboard_hub_health_file" || status=$?
+            if [ "$status" -eq 0 ] && grep -q '"status":"healthy"\|"database":"healthy"\|"status":"ok"' "$dashboard_hub_health_file"; then
+              echo "Dashboard Hub is ready" | tee -a perf-results/service-wait.log
               break
             fi
-            echo "Waiting for Dashboard Hub... $i/$SERVICE_WAIT_ATTEMPTS"
+            echo "Waiting for Dashboard Hub... $i/$SERVICE_WAIT_ATTEMPTS" | tee -a perf-results/service-wait.log
             sleep "$SERVICE_WAIT_INTERVAL_SECONDS"
             if [ "$i" -eq "$SERVICE_WAIT_ATTEMPTS" ]; then
               echo "Dashboard Hub did not become ready in time" >&2
-              docker compose ps || true
-              docker compose logs dashboard-hub mysql redis || true
+              docker compose ps > perf-results/docker-compose-ps.txt || true
+              docker compose logs --no-color dashboard-hub mysql redis > perf-results/dashboard-hub-wait.log || true
               exit 1
             fi
           done
@@ -221,12 +259,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p perf-results
-          python -m venv "$GITHUB_WORKSPACE/.venv"
-          "$GITHUB_WORKSPACE/.venv/bin/python" -m pip install --upgrade pip setuptools wheel 2>&1 | tee perf-results/pip-upgrade.log
-          "$GITHUB_WORKSPACE/.venv/bin/python" -m pip install -r requirements.txt 2>&1 | tee perf-results/pip-install.log
-          "$GITHUB_WORKSPACE/.venv/bin/python" -c "import locust, redis; print('Performance dependencies installed successfully')" 2>&1 | tee perf-results/python-import-check.log
-          echo "VENV_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
-          echo "VENV_LOCUST=$GITHUB_WORKSPACE/.venv/bin/locust" >> "$GITHUB_ENV"
+          : "${PYTHON_BIN:?PYTHON_BIN is required}"
+          : "${VENV_DIR:?VENV_DIR is required}"
+          : "${VENV_PYTHON:?VENV_PYTHON is required}"
+
+          "$PYTHON_BIN" -m venv "$VENV_DIR" 2>&1 | tee perf-results/venv-create.log
+          "$VENV_PYTHON" -m pip install --upgrade pip setuptools wheel 2>&1 | tee perf-results/pip-upgrade.log
+          "$VENV_PYTHON" -m pip install --no-cache-dir -r requirements.txt 2>&1 | tee perf-results/pip-install.log
+          "$VENV_PYTHON" -c "import locust, redis; print('Performance dependencies installed successfully')" 2>&1 | tee perf-results/python-import-check.log
 
       - name: Create performance seed data
         env:
@@ -241,7 +281,7 @@ jobs:
           : "${LOCUST_DASHBOARD_COUNT:?LOCUST_DASHBOARD_COUNT is required}"
           : "${LOCUST_SUBSCRIPTIONS_PER_DASHBOARD:?LOCUST_SUBSCRIPTIONS_PER_DASHBOARD is required}"
           mkdir -p perf-results
-          "$VENV_PYTHON" perf/bootstrap_perf_data.py --github-env "$GITHUB_ENV" | tee perf-results/bootstrap-seed.json
+          "$VENV_PYTHON" perf/bootstrap_perf_data.py --github-env "$GITHUB_ENV" 2>&1 | tee perf-results/bootstrap-seed.log
 
       - name: Validate generated seed variables
         shell: bash
@@ -263,20 +303,31 @@ jobs:
             fi
           done
 
-          echo "LOCUST_RUN_SUFFIX=$LOCUST_RUN_SUFFIX"
-          echo "LOCUST_DASHBOARD_UIDS length=${#LOCUST_DASHBOARD_UIDS}"
-          echo "LOCUST_SHARE_TOKENS length=${#LOCUST_SHARE_TOKENS}"
-          echo "LOCUST_HOT_DASHBOARD_UID=$LOCUST_HOT_DASHBOARD_UID"
-          echo "LOCUST_HOT_SHARE_TOKEN=$LOCUST_HOT_SHARE_TOKEN"
-          echo "LOCUST_CONFLICT_USER_LOGIN=$LOCUST_CONFLICT_USER_LOGIN"
+          {
+            echo "LOCUST_RUN_SUFFIX=$LOCUST_RUN_SUFFIX"
+            echo "LOCUST_DASHBOARD_UIDS length=${#LOCUST_DASHBOARD_UIDS}"
+            echo "LOCUST_SHARE_TOKENS length=${#LOCUST_SHARE_TOKENS}"
+            echo "LOCUST_HOT_DASHBOARD_UID=$LOCUST_HOT_DASHBOARD_UID"
+            echo "LOCUST_HOT_SHARE_TOKEN=$LOCUST_HOT_SHARE_TOKEN"
+            echo "LOCUST_CONFLICT_USER_LOGIN=$LOCUST_CONFLICT_USER_LOGIN"
+          } | tee perf-results/generated-seed-vars.txt
 
       - name: Verify seeded business endpoints
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p perf-results
-          curl -fsS "http://localhost:8000/api/v1/dashboards/$LOCUST_HOT_DASHBOARD_UID/subscriptions"             -o perf-results/seed-check-subscriptions.json
-          curl -fsS "http://localhost:8000/api/v1/share-links/$LOCUST_HOT_SHARE_TOKEN"             -o perf-results/seed-check-share-link.json
+
+          subscriptions_status=$(curl -sS -o perf-results/seed-check-subscriptions.json -w '%{http_code}' "http://localhost:8000/api/v1/dashboards/$LOCUST_HOT_DASHBOARD_UID/subscriptions")
+          share_status=$(curl -sS -o perf-results/seed-check-share-link.json -w '%{http_code}' "http://localhost:8000/api/v1/share-links/$LOCUST_HOT_SHARE_TOKEN")
+
+          {
+            echo "subscriptions_status=$subscriptions_status"
+            echo "share_status=$share_status"
+          } | tee perf-results/seed-check-status.txt
+
+          [ "$subscriptions_status" = "200" ] || { echo "seeded subscriptions endpoint check failed" >&2; exit 1; }
+          [ "$share_status" = "200" ] || { echo "seeded share-link endpoint check failed" >&2; exit 1; }
 
       - name: Collect metrics before load
         shell: bash
@@ -284,7 +335,9 @@ jobs:
           set -euo pipefail
           [ -x "$VENV_PYTHON" ] || { echo "Virtualenv python not found: $VENV_PYTHON" >&2; exit 1; }
           mkdir -p perf-results
-          "$VENV_PYTHON" perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-before.json
+          "$VENV_PYTHON" perf/collect_metrics_snapshot.py \
+            --metrics-url http://localhost:8000/metrics \
+            --output perf-results/metrics-before.json
 
       - name: Start metrics sampling during load
         shell: bash
@@ -292,9 +345,14 @@ jobs:
           set -euo pipefail
           [ -x "$VENV_PYTHON" ] || { echo "Virtualenv python not found: $VENV_PYTHON" >&2; exit 1; }
           mkdir -p perf-results
-          nohup "$VENV_PYTHON" -m perf.sample_metrics_during_load             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-series.json             --interval-seconds 10             --duration-seconds "$PERF_DURATION_SECONDS"             > perf-results/metrics-sampler.log 2>&1 &
+          nohup "$VENV_PYTHON" -m perf.sample_metrics_during_load \
+            --metrics-url http://localhost:8000/metrics \
+            --output perf-results/metrics-series.json \
+            --interval-seconds 10 \
+            --duration-seconds "$PERF_DURATION_SECONDS" \
+            > perf-results/metrics-sampler.log 2>&1 &
           echo $! > perf-results/metrics-sampler.pid
-          echo "Started metrics sampler with PID $(cat perf-results/metrics-sampler.pid)"
+          echo "Started metrics sampler with PID $(cat perf-results/metrics-sampler.pid)" | tee perf-results/metrics-sampler-start.txt
 
       - name: Run selected performance scenario
         env:
@@ -330,18 +388,26 @@ jobs:
             fi
           done
 
-          echo "PERF_LOCUST_FILE=$PERF_LOCUST_FILE"
-          echo "PERF_USERS=$PERF_USERS PERF_RATE=$PERF_RATE PERF_DURATION=$PERF_DURATION"
-          echo "LOCUST_WAIT_MIN_SECONDS=$LOCUST_WAIT_MIN_SECONDS"
-          echo "LOCUST_WAIT_MAX_SECONDS=$LOCUST_WAIT_MAX_SECONDS"
-          echo "LOCUST_DASHBOARD_UIDS length=${#LOCUST_DASHBOARD_UIDS}"
-          echo "LOCUST_SHARE_TOKENS length=${#LOCUST_SHARE_TOKENS}"
-          echo "LOCUST_HOT_DASHBOARD_UID=$LOCUST_HOT_DASHBOARD_UID"
-          echo "LOCUST_HOT_SHARE_TOKEN=$LOCUST_HOT_SHARE_TOKEN"
-          echo "LOCUST_CONFLICT_USER_LOGIN=$LOCUST_CONFLICT_USER_LOGIN"
+          {
+            echo "PERF_LOCUST_FILE=$PERF_LOCUST_FILE"
+            echo "PERF_USERS=$PERF_USERS PERF_RATE=$PERF_RATE PERF_DURATION=$PERF_DURATION"
+            echo "LOCUST_WAIT_MIN_SECONDS=$LOCUST_WAIT_MIN_SECONDS"
+            echo "LOCUST_WAIT_MAX_SECONDS=$LOCUST_WAIT_MAX_SECONDS"
+            echo "LOCUST_DASHBOARD_UIDS length=${#LOCUST_DASHBOARD_UIDS}"
+            echo "LOCUST_SHARE_TOKENS length=${#LOCUST_SHARE_TOKENS}"
+            echo "LOCUST_HOT_DASHBOARD_UID=$LOCUST_HOT_DASHBOARD_UID"
+            echo "LOCUST_HOT_SHARE_TOKEN=$LOCUST_HOT_SHARE_TOKEN"
+            echo "LOCUST_CONFLICT_USER_LOGIN=$LOCUST_CONFLICT_USER_LOGIN"
+          } | tee perf-results/locust-profile.txt
 
           mkdir -p perf-results
-          "$VENV_LOCUST" -f "$PERF_LOCUST_FILE"             --host http://localhost:8000             --headless             -u "$PERF_USERS" -r "$PERF_RATE" -t "$PERF_DURATION"             --csv=perf-results/locust             --html=perf-results/locust-report.html             2>&1 | tee perf-results/locust-console.log
+          "$VENV_LOCUST" -f "$PERF_LOCUST_FILE" \
+            --host http://localhost:8000 \
+            --headless \
+            -u "$PERF_USERS" -r "$PERF_RATE" -t "$PERF_DURATION" \
+            --csv=perf-results/locust \
+            --html=perf-results/locust-report.html \
+            2>&1 | tee perf-results/locust-console.log
 
       - name: Wait for metrics sampler
         if: always()
@@ -355,9 +421,15 @@ jobs:
               while kill -0 "$pid" 2>/dev/null; do
                 sleep 1
               done
+              echo "metrics sampler finished normally" > perf-results/metrics-sampler-status.txt
+            else
+              echo "metrics sampler process exited before wait step observed it" > perf-results/metrics-sampler-status.txt
             fi
           else
             echo "metrics sampler pid file not found; sampler likely never started" > perf-results/metrics-sampler-status.txt
+          fi
+          if [ -f perf-results/metrics-sampler.log ]; then
+            tail -n 200 perf-results/metrics-sampler.log > perf-results/metrics-sampler-tail.log || true
           fi
 
       - name: Collect metrics after load
@@ -366,12 +438,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p perf-results
-          venv_python="${VENV_PYTHON:-}"
-          if [ -z "$venv_python" ] || [ ! -x "$venv_python" ]; then
+          venv_python="${VENV_PYTHON:-$GITHUB_WORKSPACE/.venv/bin/python}"
+          if [ ! -x "$venv_python" ]; then
             echo "Virtualenv python not available; skipping metrics-after collection" > perf-results/metrics-after-skipped.txt
             exit 0
           fi
-          "$venv_python" perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-after.json
+          "$venv_python" perf/collect_metrics_snapshot.py \
+            --metrics-url http://localhost:8000/metrics \
+            --output perf-results/metrics-after.json
 
       - name: Assert performance thresholds
         if: always()
@@ -379,8 +453,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p perf-results
-          venv_python="${VENV_PYTHON:-}"
-          if [ -z "$venv_python" ] || [ ! -x "$venv_python" ]; then
+          venv_python="${VENV_PYTHON:-$GITHUB_WORKSPACE/.venv/bin/python}"
+          if [ ! -x "$venv_python" ]; then
             echo "Virtualenv python not available; skipping threshold assertion" | tee perf-results/threshold-check.log
             exit 0
           fi
@@ -388,7 +462,10 @@ jobs:
             echo "locust_stats.csv not found; selected performance scenario likely failed before Locust completed" | tee perf-results/threshold-check.log
             exit 0
           fi
-          "$venv_python" perf/assert_locust_thresholds.py             --csv perf-results/locust_stats.csv             --profile "$PERF_THRESHOLD_PROFILE"             2>&1 | tee perf-results/threshold-check.log
+          "$venv_python" perf/assert_locust_thresholds.py \
+            --csv perf-results/locust_stats.csv \
+            --profile "$PERF_THRESHOLD_PROFILE" \
+            2>&1 | tee perf-results/threshold-check.log
 
       - name: Collect runtime logs
         if: always()
@@ -397,7 +474,7 @@ jobs:
           set -euo pipefail
           mkdir -p perf-results
           docker compose ps > perf-results/docker-compose-ps.txt || true
-          docker compose logs > perf-results/docker-compose.log || true
+          docker compose logs --no-color > perf-results/docker-compose.log || true
 
       - name: Upload performance results
         if: always()
