@@ -257,35 +257,64 @@ python -m src.main cleanup
 
 ## 性能测试
 
-当前仓库提供了基于 Locust 的 Dashboard Hub 压测脚本。
+当前仓库提供了基于 Locust 的 Dashboard Hub 压测脚本，并按场景拆成独立文件。
 
-### 已覆盖的压测任务
-- `list_subscriptions`
-- `get_share_link`
-- `get_dashboard_summary`
-- `create_subscription_normal`
-- `create_subscription_conflict`
+### 已提供的压测脚本
+- `perf/locust_hot_read.py`：热点读场景，重点覆盖订阅列表与分享链接读取
+- `perf/locust_write_conflict.py`：并发写冲突场景，重点覆盖重复订阅创建
+- `perf/locust_cache_penetration.py`：缓存穿透场景，重点覆盖不存在资源读取
+- `perf/locust_cache_breakdown.py`：缓存击穿场景，重点覆盖热点 key 高频读取
+
+### 本地执行前置条件
+
+先保证以下服务已经启动：
+- Grafana
+- Dashboard Hub
+- MySQL
+- Redis
+
+然后执行种子脚本，为压测准备 dashboard、subscription 和 share link 数据：
+
+```bash
+python perf/bootstrap_perf_data.py
+```
+
+脚本会输出一组 `LOCUST_*` 变量，至少需要把下面这些变量导出到当前 shell：
+- `LOCUST_DASHBOARD_UIDS`
+- `LOCUST_SHARE_TOKENS`
+- `LOCUST_HOT_DASHBOARD_UID`
+- `LOCUST_HOT_SHARE_TOKEN`
+- `LOCUST_CONFLICT_USER_LOGIN`
 
 ### 本地执行示例
 
-先保证服务已经启动，并准备好：
-- `LOCUST_DASHBOARD_UID`
-- `LOCUST_SHARE_TOKEN`
-
-然后执行：
+Web UI 模式：
 
 ```bash
-locust -f perf/locustfile.py --host http://localhost:8000
+locust -f perf/locust_hot_read.py --host http://localhost:8000
 ```
 
 无头模式示例：
 
 ```bash
-locust -f perf/locustfile.py \
+locust -f perf/locust_hot_read.py \
   --host http://localhost:8000 \
   --headless \
   -u 20 -r 5 -t 3m
 ```
+
+并发写冲突示例：
+
+```bash
+locust -f perf/locust_write_conflict.py \
+  --host http://localhost:8000 \
+  --headless \
+  -u 40 -r 10 -t 3m
+```
+
+说明：
+- 当前 README 不再使用 `perf/locustfile.py`，因为仓库里实际已经拆成多个场景文件
+- 当前热点读压测主要覆盖订阅列表与分享链接，不再把摘要读取写成已覆盖场景
 
 ---
 
