@@ -3,9 +3,13 @@ from __future__ import annotations
 import time
 
 
-body_for_create_folder = {
-    "title": f"folder-auto-{int(time.time())}"
-}
+def make_body_for_create_folder() -> dict:
+    return {
+        "title": f"folder-auto-{int(time.time() * 1000)}"
+    }
+
+
+body_for_create_folder = make_body_for_create_folder()
 
 
 def get_body_for_create_dashboard(folder_uid: str) -> dict:
