@@ -9,8 +9,6 @@ def make_body_for_create_folder() -> dict:
     }
 
 
-body_for_create_folder = make_body_for_create_folder()
-
 
 def get_body_for_create_dashboard(folder_uid: str) -> dict:
     suffix = int(time.time() * 1000)
