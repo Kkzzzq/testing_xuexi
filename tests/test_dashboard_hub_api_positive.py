@@ -37,6 +37,9 @@ def test_create_share_link_success(session_context):
     data = response.json()
     assert data["dashboard_uid"] == session_context.dashboard_uid
     assert data["token"]
+    assert isinstance(data["id"], int)
+    assert data["view_count"] == 0
+    assert data["created_at"]
 
     session_context.register_share_token(token)
 
@@ -78,6 +81,9 @@ def test_get_share_link_success(session_context):
     payload = response.json()
     assert payload["dashboard_uid"] == session_context.dashboard_uid
     assert payload["token"] == token
+    assert isinstance(payload["id"], int)
+    assert payload["view_count"] >= 1
+    assert payload["created_at"]
 
 
 @allure.title("Read dashboard AI summary successfully")
