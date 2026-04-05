@@ -281,10 +281,12 @@ def _summary_cache_key(dashboard_uid: str) -> str:
 
 def _share_link_payload(row: ShareLink) -> dict[str, Any]:
     return {
+        "id": row.id,
         "dashboard_uid": row.dashboard_uid,
         "token": row.token,
         "expire_at": row.expire_at.isoformat() if row.expire_at else None,
         "view_count": row.view_count,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
     }
 
 
@@ -461,36 +463,45 @@ def get_share_link(db: Session, token: str):
     record_event("share_link_read_started", token=token, cache_key=cache_key)
     cached = _cache_get_json("share_link", cache_key)
     if cached is not None:
-        CACHE_HIT_COUNT.labels(cache_name="share_link").inc()
-        record_event("share_link_cache_hit", token=token, cache_key=cache_key)
-        expire_at = _parse_expire_at(cached.get("expire_at"))
-        if _is_expired(expire_at):
-            _cache_delete("share_link", cache_key)
-            SHARE_LINK_EXPIRED_COUNT.labels(source="cache").inc()
-            record_event("share_link_cache_entry_expired", token=token, cache_key=cache_key)
-            return "expired"
-
-        with observe_histogram(DB_OPERATION_LATENCY, "share_link_increment_after_cache_hit"):
-            updated_rows = (
-                db.query(ShareLink)
-                .filter(ShareLink.token == token)
-                .update({ShareLink.view_count: ShareLink.view_count + 1}, synchronize_session=False)
+        if "id" not in cached or "created_at" not in cached:
+            _cache_delete("share_link", cache_key, reason="share_link_payload_backfill")
+            record_event(
+                "share_link_cache_payload_incomplete",
+                token=token,
+                cache_key=cache_key,
+                missing_fields=[field for field in ("id", "created_at") if field not in cached],
             )
-            db.commit()
-        if updated_rows == 0:
-            _cache_delete("share_link", cache_key)
-            record_event("share_link_db_row_missing_after_cache_hit", token=token, cache_key=cache_key)
-            return None
+        else:
+            CACHE_HIT_COUNT.labels(cache_name="share_link").inc()
+            record_event("share_link_cache_hit", token=token, cache_key=cache_key)
+            expire_at = _parse_expire_at(cached.get("expire_at"))
+            if _is_expired(expire_at):
+                _cache_delete("share_link", cache_key)
+                SHARE_LINK_EXPIRED_COUNT.labels(source="cache").inc()
+                record_event("share_link_cache_entry_expired", token=token, cache_key=cache_key)
+                return "expired"
 
-        cached["view_count"] = int(cached.get("view_count", 0)) + 1
-        _cache_set_json("share_link", cache_key, cached, ex=CACHE_TTL_SECONDS)
-        record_event(
-            "share_link_cache_refreshed_after_read",
-            token=token,
-            cache_key=cache_key,
-            view_count=cached["view_count"],
-        )
-        return cached
+            with observe_histogram(DB_OPERATION_LATENCY, "share_link_increment_after_cache_hit"):
+                updated_rows = (
+                    db.query(ShareLink)
+                    .filter(ShareLink.token == token)
+                    .update({ShareLink.view_count: ShareLink.view_count + 1}, synchronize_session=False)
+                )
+                db.commit()
+            if updated_rows == 0:
+                _cache_delete("share_link", cache_key)
+                record_event("share_link_db_row_missing_after_cache_hit", token=token, cache_key=cache_key)
+                return None
+
+            cached["view_count"] = int(cached.get("view_count", 0)) + 1
+            _cache_set_json("share_link", cache_key, cached, ex=CACHE_TTL_SECONDS)
+            record_event(
+                "share_link_cache_refreshed_after_read",
+                token=token,
+                cache_key=cache_key,
+                view_count=cached["view_count"],
+            )
+            return cached
 
     CACHE_MISS_COUNT.labels(cache_name="share_link").inc()
     record_event("share_link_cache_miss", token=token, cache_key=cache_key)
