@@ -122,6 +122,13 @@ jobs:
             echo "LOCUST_WAIT_MAX_SECONDS=${{ inputs.wait_max_seconds }}" >> "$GITHUB_ENV"
           fi
 
+      - name: Set common workflow variables
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "SERVICE_WAIT_ATTEMPTS=90" >> "$GITHUB_ENV"
+          echo "SERVICE_WAIT_INTERVAL_SECONDS=2" >> "$GITHUB_ENV"
+
       - name: Print selected profile
         shell: bash
         run: |
@@ -137,6 +144,8 @@ jobs:
           echo "LOCUST_WAIT_MAX_SECONDS=$LOCUST_WAIT_MAX_SECONDS"
           echo "LOCUST_DASHBOARD_COUNT=$LOCUST_DASHBOARD_COUNT"
           echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=$LOCUST_SUBSCRIPTIONS_PER_DASHBOARD"
+          echo "SERVICE_WAIT_ATTEMPTS=$SERVICE_WAIT_ATTEMPTS"
+          echo "SERVICE_WAIT_INTERVAL_SECONDS=$SERVICE_WAIT_INTERVAL_SECONDS"
 
       - name: Start required services
         shell: bash
@@ -148,28 +157,33 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for i in $(seq 1 60); do
+
+          for i in $(seq 1 "$SERVICE_WAIT_ATTEMPTS"); do
             if curl -fsS http://localhost:3000/api/health | grep -q '"database":"ok"\|"status":"ok"'; then
               echo "Grafana is ready"
               break
             fi
-            echo "Waiting for Grafana... $i/60"
-            sleep 2
-            if [ "$i" -eq 60 ]; then
+            echo "Waiting for Grafana... $i/$SERVICE_WAIT_ATTEMPTS"
+            sleep "$SERVICE_WAIT_INTERVAL_SECONDS"
+            if [ "$i" -eq "$SERVICE_WAIT_ATTEMPTS" ]; then
               echo "Grafana did not become ready in time" >&2
+              docker compose ps || true
+              docker compose logs grafana || true
               exit 1
             fi
           done
 
-          for i in $(seq 1 60); do
+          for i in $(seq 1 "$SERVICE_WAIT_ATTEMPTS"); do
             if curl -fsS http://localhost:8000/health | grep -q '"status":"healthy"\|"database":"healthy"\|"status":"ok"'; then
               echo "Dashboard Hub is ready"
               break
             fi
-            echo "Waiting for Dashboard Hub... $i/60"
-            sleep 2
-            if [ "$i" -eq 60 ]; then
+            echo "Waiting for Dashboard Hub... $i/$SERVICE_WAIT_ATTEMPTS"
+            sleep "$SERVICE_WAIT_INTERVAL_SECONDS"
+            if [ "$i" -eq "$SERVICE_WAIT_ATTEMPTS" ]; then
               echo "Dashboard Hub did not become ready in time" >&2
+              docker compose ps || true
+              docker compose logs dashboard-hub mysql redis || true
               exit 1
             fi
           done
@@ -178,11 +192,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m venv .venv
-          . .venv/bin/activate
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -r requirements.txt
-          python -c "import locust, redis; print('Performance dependencies installed successfully')"
+          python -m venv "$GITHUB_WORKSPACE/.venv"
+          "$GITHUB_WORKSPACE/.venv/bin/python" -m pip install --upgrade pip setuptools wheel
+          "$GITHUB_WORKSPACE/.venv/bin/python" -m pip install -r requirements.txt
+          "$GITHUB_WORKSPACE/.venv/bin/python" -c "import locust, redis; print('Performance dependencies installed successfully')"
+          echo "VENV_PYTHON=$GITHUB_WORKSPACE/.venv/bin/python" >> "$GITHUB_ENV"
+          echo "VENV_LOCUST=$GITHUB_WORKSPACE/.venv/bin/locust" >> "$GITHUB_ENV"
 
       - name: Create performance seed data
         env:
@@ -193,11 +208,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          . .venv/bin/activate
+          [ -x "$VENV_PYTHON" ] || { echo "Virtualenv python not found: $VENV_PYTHON" >&2; exit 1; }
           : "${LOCUST_DASHBOARD_COUNT:?LOCUST_DASHBOARD_COUNT is required}"
           : "${LOCUST_SUBSCRIPTIONS_PER_DASHBOARD:?LOCUST_SUBSCRIPTIONS_PER_DASHBOARD is required}"
           mkdir -p perf-results
-          python perf/bootstrap_perf_data.py --github-env "$GITHUB_ENV" | tee perf-results/bootstrap-seed.json
+          "$VENV_PYTHON" perf/bootstrap_perf_data.py --github-env "$GITHUB_ENV" | tee perf-results/bootstrap-seed.json
 
       - name: Validate generated seed variables
         shell: bash
@@ -238,17 +253,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          . .venv/bin/activate
+          [ -x "$VENV_PYTHON" ] || { echo "Virtualenv python not found: $VENV_PYTHON" >&2; exit 1; }
           mkdir -p perf-results
-          python perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-before.json
+          "$VENV_PYTHON" perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-before.json
 
       - name: Start metrics sampling during load
         shell: bash
         run: |
           set -euo pipefail
-          . .venv/bin/activate
+          [ -x "$VENV_PYTHON" ] || { echo "Virtualenv python not found: $VENV_PYTHON" >&2; exit 1; }
           mkdir -p perf-results
-          nohup python -m perf.sample_metrics_during_load             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-series.json             --interval-seconds 10             --duration-seconds "$PERF_DURATION_SECONDS"             > perf-results/metrics-sampler.log 2>&1 &
+          nohup "$VENV_PYTHON" -m perf.sample_metrics_during_load             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-series.json             --interval-seconds 10             --duration-seconds "$PERF_DURATION_SECONDS"             > perf-results/metrics-sampler.log 2>&1 &
           echo $! > perf-results/metrics-sampler.pid
           echo "Started metrics sampler with PID $(cat perf-results/metrics-sampler.pid)"
 
@@ -262,7 +277,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          . .venv/bin/activate
+          [ -x "$VENV_LOCUST" ] || { echo "Locust executable not found: $VENV_LOCUST" >&2; exit 1; }
 
           required_vars=(
             PERF_LOCUST_FILE
@@ -297,7 +312,7 @@ jobs:
           echo "LOCUST_CONFLICT_USER_LOGIN=$LOCUST_CONFLICT_USER_LOGIN"
 
           mkdir -p perf-results
-          locust -f "$PERF_LOCUST_FILE"             --host http://localhost:8000             --headless             -u "$PERF_USERS" -r "$PERF_RATE" -t "$PERF_DURATION"             --csv=perf-results/locust             --html=perf-results/locust-report.html             2>&1 | tee perf-results/locust-console.log
+          "$VENV_LOCUST" -f "$PERF_LOCUST_FILE"             --host http://localhost:8000             --headless             -u "$PERF_USERS" -r "$PERF_RATE" -t "$PERF_DURATION"             --csv=perf-results/locust             --html=perf-results/locust-report.html             2>&1 | tee perf-results/locust-console.log
 
       - name: Wait for metrics sampler
         if: always()
@@ -318,17 +333,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          . .venv/bin/activate
+          [ -x "$VENV_PYTHON" ] || { echo "Virtualenv python not found: $VENV_PYTHON" >&2; exit 1; }
           mkdir -p perf-results
-          python perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-after.json
+          "$VENV_PYTHON" perf/collect_metrics_snapshot.py             --metrics-url http://localhost:8000/metrics             --output perf-results/metrics-after.json
 
       - name: Assert performance thresholds
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          . .venv/bin/activate
-          python perf/assert_locust_thresholds.py             --csv perf-results/locust_stats.csv             --profile "$PERF_THRESHOLD_PROFILE"             2>&1 | tee perf-results/threshold-check.log
+          [ -x "$VENV_PYTHON" ] || { echo "Virtualenv python not found: $VENV_PYTHON" >&2; exit 1; }
+          "$VENV_PYTHON" perf/assert_locust_thresholds.py             --csv perf-results/locust_stats.csv             --profile "$PERF_THRESHOLD_PROFILE"             2>&1 | tee perf-results/threshold-check.log
 
       - name: Collect runtime logs
         if: always()
