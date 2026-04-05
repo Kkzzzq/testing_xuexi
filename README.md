@@ -56,15 +56,18 @@ Dashboard 摘要能力支持两种输出方式：
 
 - 查询订阅列表
 - 读取分享链接
-- 读取 Dashboard 摘要
 - 正常创建订阅
 - 重复创建订阅冲突场景
+- 不存在资源读取（缓存穿透）
+- 热点 key 高频读取（缓存击穿）
 
 配合 Prometheus 暴露的指标，可观察：
 
 - 请求量
 - 请求时延
 - 缓存命中 / 未命中
+- 上游 Grafana 请求与失败
+- 写后缓存失效是否生效
 - 摘要来自 AI 还是 fallback
 
 ---
@@ -326,6 +329,10 @@ Dashboard Hub 通过 `/metrics` 暴露 Prometheus 指标，重点包括：
 - `dashboard_hub_request_latency_seconds`
 - `dashboard_hub_cache_hit_total`
 - `dashboard_hub_cache_miss_total`
+- `dashboard_hub_grafana_requests_total`
+- `dashboard_hub_grafana_request_failures_total`
+- `dashboard_hub_cache_invalidations_total`
+- `dashboard_hub_subscription_conflicts_total`
 - `dashboard_hub_summary_source_total`
 
 这些指标可以帮助判断：
@@ -333,6 +340,9 @@ Dashboard Hub 通过 `/metrics` 暴露 Prometheus 指标，重点包括：
 - 哪类接口最热
 - 哪类接口最慢
 - Redis 缓存是否真正起作用
+- 上游 Grafana 是否拖慢或打断业务链路
+- 写操作后缓存是否按预期失效
+- 冲突写场景是否被正确识别
 - 摘要主要来自 AI 还是 fallback
 
 ---
