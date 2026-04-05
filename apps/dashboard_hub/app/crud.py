@@ -206,7 +206,17 @@ def fetch_dashboard_context(dashboard_uid: str) -> dict | None:
             error_class=exc.__class__.__name__,
             error=str(exc),
         )
-        return None
+        raise DashboardLookupUnavailableError("grafana summary lookup failed") from exc
+
+    if response.status_code >= 500:
+        record_event(
+            "summary_dashboard_context_fetch_failed",
+            dashboard_uid=dashboard_uid,
+            status_code=response.status_code,
+        )
+        raise DashboardLookupUnavailableError(
+            f"grafana summary lookup returned status {response.status_code}"
+        )
 
     if response.status_code != 200:
         record_event(
@@ -225,17 +235,19 @@ def fetch_dashboard_context(dashboard_uid: str) -> dict | None:
             error_class=exc.__class__.__name__,
             error=str(exc),
         )
-        return None
+        raise DashboardLookupUnavailableError("grafana summary payload parse failed") from exc
 
     dashboard = payload.get("dashboard") or {}
     meta = payload.get("meta") or {}
     panels = _extract_panel_titles(dashboard.get("panels"))
     panel_payloads = _extract_panel_payloads(dashboard.get("panels"))
+    tags = [str(tag) for tag in (dashboard.get("tags") or []) if tag is not None]
 
     context = {
         "dashboard_uid": dashboard_uid,
         "title": dashboard.get("title") or dashboard_uid,
         "url": meta.get("url") or f"/d/{dashboard_uid}",
+        "tags": tags,
         "panels": panels,
         "panel_payloads": panel_payloads,
     }
@@ -258,21 +270,6 @@ def build_fallback_summary(title: str, panels: list[str]) -> str:
 def _summary_cache_key(dashboard_uid: str) -> str:
     return f"dashhub:summary:{dashboard_uid}:{AI_PROVIDER}:{AI_MODEL}:{AI_PROMPT_VERSION}"
 
-
-def _build_ai_messages(title: str, panel_payloads: list[dict[str, Any]]) -> list[dict[str, str]]:
-    system_prompt = (
-        "你是一个 Grafana Dashboard 摘要助手。"
-        "请基于提供的 dashboard 标题与面板信息，用中文输出简洁、客观、适合测试场景展示的摘要。"
-        f"输出不要超过 {120} 个字。"
-    )
-    user_payload = {
-        "title": title,
-        "panels": panel_payloads,
-    }
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-    ]
 
 
 def _share_link_payload(row: ShareLink) -> dict[str, Any]:
@@ -580,13 +577,17 @@ def get_dashboard_summary(dashboard_uid: str):
                 provider=AI_PROVIDER,
                 model=AI_MODEL,
             )
-            ai_result = client.chat(
-                messages=_build_ai_messages(context["title"], context["panel_payloads"]),
-                timeout_seconds=20,
-                max_summary_chars=120,
+            ai_result = client.summarize_dashboard(
+                title=context["title"],
+                tags=context["tags"],
+                panel_titles=context["panels"],
+                panel_payloads=context["panel_payloads"],
             )
             if ai_result.get("ai_summary"):
                 payload["ai_summary"] = ai_result["ai_summary"]
+                payload["provider"] = ai_result.get("provider", payload["provider"])
+                payload["model"] = ai_result.get("model", payload["model"])
+                payload["prompt_version"] = ai_result.get("prompt_version", payload["prompt_version"])
                 payload["source"] = "ai"
             record_event(
                 "summary_ai_request_finished",

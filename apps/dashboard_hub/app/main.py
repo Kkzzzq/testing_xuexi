@@ -188,7 +188,11 @@ def delete_share_link_api(token: str, db: Session = Depends(get_db)):
 
 @app.get("/api/v1/dashboards/{dashboard_uid}/summary", response_model=DashboardSummaryOut)
 def get_dashboard_summary_api(dashboard_uid: str):
-    payload = get_dashboard_summary(dashboard_uid)
+    try:
+        payload = get_dashboard_summary(dashboard_uid)
+    except DashboardLookupUnavailableError as exc:
+        raise HTTPException(status_code=503, detail="grafana lookup unavailable") from exc
+
     if not payload:
         raise HTTPException(status_code=404, detail="dashboard not found")
     return payload
