@@ -12,7 +12,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="testing_xuexi utility CLI")
+    parser = argparse.ArgumentParser(description="Grafana test automation utility CLI")
     subparsers = parser.add_subparsers(dest="command")
 
     subparsers.add_parser("prepare", help="Create shared test resources")
