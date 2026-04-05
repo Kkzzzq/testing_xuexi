@@ -61,6 +61,7 @@ def _finalize_result(
         "runtime": runtime,
         "http_steps": http_steps,
         "intermediate": intermediate,
+        "observations": observations or [],
         "facts": facts or {},
         "execution_error": execution_error,
         "snapshot": {
