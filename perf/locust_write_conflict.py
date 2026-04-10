@@ -18,6 +18,11 @@ def _env_float(name: str, default: float) -> float:
 
 DASHBOARD_UIDS = _split_env('LOCUST_DASHBOARD_UIDS')
 CONFLICT_USER_LOGIN = os.getenv('LOCUST_CONFLICT_USER_LOGIN', 'locust_conflict_user')
+CONFLICT_DASHBOARD_UID = (
+    os.getenv('LOCUST_CONFLICT_DASHBOARD_UID')
+    or os.getenv('LOCUST_HOT_DASHBOARD_UID')
+    or (DASHBOARD_UIDS[0] if DASHBOARD_UIDS else '')
+).strip()
 _CHANNELS = ('email', 'slack', 'webhook')
 WAIT_MIN_SECONDS = _env_float('LOCUST_WAIT_MIN_SECONDS', 0.01)
 WAIT_MAX_SECONDS = _env_float('LOCUST_WAIT_MAX_SECONDS', 0.04)
@@ -71,7 +76,7 @@ class WriteConflictUser(HttpUser):
 
     @task(3)
     def create_subscription_conflict(self):
-        dashboard_uid = _next_dashboard_uid()
+        dashboard_uid = CONFLICT_DASHBOARD_UID
         if not dashboard_uid:
             return
 
@@ -87,9 +92,9 @@ class WriteConflictUser(HttpUser):
             name='/api/v1/subscriptions:create_conflict',
             catch_response=True,
         ) as response:
-            if response.status_code in (201, 409):
+            if response.status_code == 409:
                 response.success()
             else:
                 response.failure(
-                    f'unexpected status={response.status_code}, body={response.text[:200]}'
+                    f'expected 409 conflict, got status={response.status_code}, body={response.text[:200]}'
                 )

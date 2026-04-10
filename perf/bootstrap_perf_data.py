@@ -88,6 +88,7 @@ def create_perf_seed_data(
     admin_user: str,
     admin_password: str,
     run_suffix: str,
+    conflict_user_login: str,
 ):
     dashboard_uids: list[str] = []
     share_tokens: list[str] = []
@@ -162,6 +163,21 @@ def create_perf_seed_data(
 
     hot_dashboard_uid = dashboard_uids[0]
     hot_share_token = share_tokens[0]
+
+    # 预先种入一条固定冲突数据，让写冲突场景从启动开始就能稳定打出 409。
+    _request_json_with_retry(
+        f'{dashboard_hub_base_url}/api/v1/subscriptions',
+        method='POST',
+        headers={'Content-Type': 'application/json'},
+        payload={
+            'dashboard_uid': hot_dashboard_uid,
+            'user_login': conflict_user_login,
+            'channel': 'email',
+            'cron': '0 */6 * * *',
+        },
+        retryable_status_codes={500, 502, 503, 504},
+    )
+
     return dashboard_uids, share_tokens, hot_dashboard_uid, hot_share_token
 
 
@@ -183,6 +199,7 @@ def main() -> int:
     args = parser.parse_args()
 
     run_suffix = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S') + '-' + uuid4().hex[:6]
+    conflict_user_login = f'locust_conflict_user_{run_suffix}'
 
     dashboard_uids, share_tokens, hot_dashboard_uid, hot_share_token = create_perf_seed_data(
         grafana_base_url=args.grafana_base_url,
@@ -192,6 +209,7 @@ def main() -> int:
         admin_user=args.admin_user,
         admin_password=args.admin_password,
         run_suffix=run_suffix,
+        conflict_user_login=conflict_user_login,
     )
 
     result = {
@@ -200,7 +218,8 @@ def main() -> int:
         'LOCUST_SHARE_TOKENS': ','.join(share_tokens),
         'LOCUST_HOT_DASHBOARD_UID': hot_dashboard_uid,
         'LOCUST_HOT_SHARE_TOKEN': hot_share_token,
-        'LOCUST_CONFLICT_USER_LOGIN': f'locust_conflict_user_{run_suffix}',
+        'LOCUST_CONFLICT_DASHBOARD_UID': hot_dashboard_uid,
+        'LOCUST_CONFLICT_USER_LOGIN': conflict_user_login,
     }
 
     if args.github_env:

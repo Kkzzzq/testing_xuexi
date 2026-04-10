@@ -9,30 +9,62 @@ PROFILES = {
     'hot_read': {
         '/api/v1/dashboards/{dashboard_uid}/subscriptions:hot_read': {
             'max_p95_ms': 800,
+            'max_p99_ms': 1200,
             'max_failures': 0,
         },
-        '/api/v1/share-links/{token}:hot_read': {'max_p95_ms': 900, 'max_failures': 0},
-        'Aggregated': {'max_error_rate': 0.01},
+        '/api/v1/share-links/{token}:hot_read': {
+            'max_p95_ms': 900,
+            'max_p99_ms': 1300,
+            'max_failures': 0,
+        },
+        'Aggregated': {'max_error_rate': 0.01, 'min_request_count': 1000, 'min_rps': 5.0},
     },
     'write_conflict': {
-        '/api/v1/subscriptions:create_normal': {'max_p95_ms': 1200, 'max_failures': 0},
-        '/api/v1/subscriptions:create_conflict': {'max_p95_ms': 1200, 'max_failures': 0},
-        'Aggregated': {'max_error_rate': 0.01},
-    },
-    'cache_penetration': {
-        '/api/v1/share-links/{token}:penetration': {'max_p95_ms': 900, 'max_failures': 0},
-        '/api/v1/dashboards/{dashboard_uid}/subscriptions:penetration': {
-            'max_p95_ms': 1100,
+        '/api/v1/subscriptions:create_normal': {
+            'max_p95_ms': 1200,
+            'max_p99_ms': 1800,
             'max_failures': 0,
         },
-        'Aggregated': {'max_error_rate': 0.01},
+        '/api/v1/subscriptions:create_conflict': {
+            'max_p95_ms': 1200,
+            'max_p99_ms': 1800,
+            'max_failures': 0,
+        },
+        'Aggregated': {'max_error_rate': 0.01, 'min_request_count': 500, 'min_rps': 2.0},
+    },
+    'cache_penetration': {
+        '/api/v1/share-links/{token}:penetration': {
+            'max_p95_ms': 900,
+            'max_p99_ms': 1300,
+            'max_failures': 0,
+        },
+        '/api/v1/dashboards/{dashboard_uid}/subscriptions:penetration': {
+            'max_p95_ms': 1100,
+            'max_p99_ms': 1600,
+            'max_failures': 0,
+        },
+        'Aggregated': {'max_error_rate': 0.01, 'min_request_count': 800, 'min_rps': 4.0},
     },
     'cache_breakdown': {
         '/api/v1/dashboards/{dashboard_uid}/subscriptions:breakdown': {
             'max_p95_ms': 1300,
+            'max_p99_ms': 1900,
             'max_failures': 0,
         },
-        'Aggregated': {'max_error_rate': 0.01},
+        'Aggregated': {'max_error_rate': 0.01, 'min_request_count': 800, 'min_rps': 4.0},
+    },
+    'cache_avalanche': {
+        '/api/v1/dashboards/{dashboard_uid}/subscriptions:avalanche': {
+            'max_p95_ms': 1600,
+            'max_p99_ms': 2300,
+            'max_failures': 0,
+        },
+        '/api/v1/share-links/{token}:avalanche': {
+            'max_p95_ms': 1600,
+            'max_p99_ms': 2300,
+            'max_failures': 0,
+        },
+        'Aggregated': {'max_error_rate': 0.02, 'min_request_count': 1000, 'min_rps': 4.0},
     },
 }
 
@@ -79,13 +111,23 @@ def assert_thresholds(rows: dict[str, dict[str, str]], profile: str):
                 if p95 > rule['max_p95_ms']:
                     errors.append(f'{name} p95={p95}ms > {rule["max_p95_ms"]}ms')
 
+        if 'max_p99_ms' in rule:
+            raw_p99 = row.get('99%')
+            if raw_p99 in (None, '', 'N/A', 'n/a'):
+                errors.append(f'missing or invalid p99 value for {name}')
+            else:
+                p99 = _to_float(raw_p99)
+                if p99 > rule['max_p99_ms']:
+                    errors.append(f'{name} p99={p99}ms > {rule["max_p99_ms"]}ms')
+
         if 'max_failures' in rule:
             failures = _to_int(row.get('Failure Count'))
             if failures > rule['max_failures']:
                 errors.append(f'{name} failures={failures} > {rule["max_failures"]}')
 
+        request_count = _to_int(row.get('Request Count'))
+
         if 'max_error_rate' in rule:
-            request_count = _to_int(row.get('Request Count'))
             failures = _to_int(row.get('Failure Count'))
             if request_count <= 0:
                 errors.append(f'{name} request_count is missing or zero')
@@ -96,8 +138,16 @@ def assert_thresholds(rows: dict[str, dict[str, str]], profile: str):
                         f'{name} error_rate={error_rate:.4f} > {rule["max_error_rate"]:.4f}'
                     )
 
+        if 'min_request_count' in rule and request_count < rule['min_request_count']:
+            errors.append(f'{name} request_count={request_count} < {rule["min_request_count"]}')
+
+        if 'min_rps' in rule:
+            rps = _to_float(row.get('Requests/s'))
+            if rps < rule['min_rps']:
+                errors.append(f'{name} requests/s={rps:.2f} < {rule["min_rps"]:.2f}')
+
     if errors:
-        raise SystemExit('Performance thresholds failed:\n- ' + '\n- '.join(errors))
+        raise SystemExit('Performance thresholds failed\n- ' + '\n- '.join(errors))
 
 
 def main() -> int:
