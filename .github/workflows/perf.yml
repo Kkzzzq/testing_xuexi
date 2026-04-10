@@ -13,6 +13,7 @@ on:
           - write_conflict
           - cache_penetration
           - cache_breakdown
+          - cache_avalanche
       users:
         description: "Optional override for total Locust users"
         required: false
@@ -83,6 +84,8 @@ jobs:
               echo "LOCUST_WAIT_MAX_SECONDS=0.05" >> "$GITHUB_ENV"
               echo "LOCUST_DASHBOARD_COUNT=20" >> "$GITHUB_ENV"
               echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=20" >> "$GITHUB_ENV"
+              echo "CACHE_TTL_SECONDS=120" >> "$GITHUB_ENV"
+              echo "DASHBOARD_EXISTS_CACHE_TTL_SECONDS=30" >> "$GITHUB_ENV"
               ;;
             write_conflict)
               echo "PERF_LOCUST_FILE=perf/locust_write_conflict.py" >> "$GITHUB_ENV"
@@ -95,6 +98,8 @@ jobs:
               echo "LOCUST_WAIT_MAX_SECONDS=0.04" >> "$GITHUB_ENV"
               echo "LOCUST_DASHBOARD_COUNT=10" >> "$GITHUB_ENV"
               echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=5" >> "$GITHUB_ENV"
+              echo "CACHE_TTL_SECONDS=120" >> "$GITHUB_ENV"
+              echo "DASHBOARD_EXISTS_CACHE_TTL_SECONDS=30" >> "$GITHUB_ENV"
               ;;
             cache_penetration)
               echo "PERF_LOCUST_FILE=perf/locust_cache_penetration.py" >> "$GITHUB_ENV"
@@ -107,6 +112,8 @@ jobs:
               echo "LOCUST_WAIT_MAX_SECONDS=0.02" >> "$GITHUB_ENV"
               echo "LOCUST_DASHBOARD_COUNT=5" >> "$GITHUB_ENV"
               echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=3" >> "$GITHUB_ENV"
+              echo "CACHE_TTL_SECONDS=120" >> "$GITHUB_ENV"
+              echo "DASHBOARD_EXISTS_CACHE_TTL_SECONDS=30" >> "$GITHUB_ENV"
               ;;
             cache_breakdown)
               echo "PERF_LOCUST_FILE=perf/locust_cache_breakdown.py" >> "$GITHUB_ENV"
@@ -119,6 +126,24 @@ jobs:
               echo "LOCUST_WAIT_MAX_SECONDS=0.01" >> "$GITHUB_ENV"
               echo "LOCUST_DASHBOARD_COUNT=5" >> "$GITHUB_ENV"
               echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=20" >> "$GITHUB_ENV"
+              echo "CACHE_TTL_SECONDS=120" >> "$GITHUB_ENV"
+              echo "DASHBOARD_EXISTS_CACHE_TTL_SECONDS=30" >> "$GITHUB_ENV"
+              ;;
+            cache_avalanche)
+              echo "PERF_LOCUST_FILE=perf/locust_cache_avalanche.py" >> "$GITHUB_ENV"
+              echo "PERF_THRESHOLD_PROFILE=cache_avalanche" >> "$GITHUB_ENV"
+              echo "PERF_USERS=140" >> "$GITHUB_ENV"
+              echo "PERF_RATE=24" >> "$GITHUB_ENV"
+              echo "PERF_DURATION=5m" >> "$GITHUB_ENV"
+              echo "PERF_DURATION_SECONDS=300" >> "$GITHUB_ENV"
+              echo "LOCUST_WAIT_MIN_SECONDS=0.0" >> "$GITHUB_ENV"
+              echo "LOCUST_WAIT_MAX_SECONDS=0.02" >> "$GITHUB_ENV"
+              echo "LOCUST_DASHBOARD_COUNT=12" >> "$GITHUB_ENV"
+              echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=20" >> "$GITHUB_ENV"
+              echo "LOCUST_AVALANCHE_HOTSET_SIZE=6" >> "$GITHUB_ENV"
+              echo "LOCUST_AVALANCHE_WAVE_INTERVAL_SECONDS=12" >> "$GITHUB_ENV"
+              echo "CACHE_TTL_SECONDS=45" >> "$GITHUB_ENV"
+              echo "DASHBOARD_EXISTS_CACHE_TTL_SECONDS=15" >> "$GITHUB_ENV"
               ;;
             *)
               echo "Unsupported scenario: $scenario" >&2
@@ -191,6 +216,8 @@ jobs:
             echo "LOCUST_WAIT_MAX_SECONDS=$LOCUST_WAIT_MAX_SECONDS"
             echo "LOCUST_DASHBOARD_COUNT=$LOCUST_DASHBOARD_COUNT"
             echo "LOCUST_SUBSCRIPTIONS_PER_DASHBOARD=$LOCUST_SUBSCRIPTIONS_PER_DASHBOARD"
+            echo "CACHE_TTL_SECONDS=$CACHE_TTL_SECONDS"
+            echo "DASHBOARD_EXISTS_CACHE_TTL_SECONDS=$DASHBOARD_EXISTS_CACHE_TTL_SECONDS"
             echo "SERVICE_WAIT_ATTEMPTS=$SERVICE_WAIT_ATTEMPTS"
             echo "SERVICE_WAIT_INTERVAL_SECONDS=$SERVICE_WAIT_INTERVAL_SECONDS"
             echo "VENV_DIR=$VENV_DIR"
@@ -311,6 +338,7 @@ jobs:
             LOCUST_SHARE_TOKENS
             LOCUST_HOT_DASHBOARD_UID
             LOCUST_HOT_SHARE_TOKEN
+            LOCUST_CONFLICT_DASHBOARD_UID
             LOCUST_CONFLICT_USER_LOGIN
           )
 
@@ -327,6 +355,7 @@ jobs:
             echo "LOCUST_SHARE_TOKENS length=${#LOCUST_SHARE_TOKENS}"
             echo "LOCUST_HOT_DASHBOARD_UID=$LOCUST_HOT_DASHBOARD_UID"
             echo "LOCUST_HOT_SHARE_TOKEN=$LOCUST_HOT_SHARE_TOKEN"
+            echo "LOCUST_CONFLICT_DASHBOARD_UID=$LOCUST_CONFLICT_DASHBOARD_UID"
             echo "LOCUST_CONFLICT_USER_LOGIN=$LOCUST_CONFLICT_USER_LOGIN"
           } | tee perf-results/generated-seed-vars.txt
 
@@ -379,6 +408,7 @@ jobs:
           REDIS_DB: "0"
           LOCUST_WARMUP_REQUESTS: "2"
           LOCUST_BREAKDOWN_WARMUP_REQUESTS: "2"
+          LOCUST_BREAKDOWN_INVALIDATE_INTERVAL_SECONDS: "2.5"
         shell: bash
         run: |
           set -euo pipefail
@@ -396,6 +426,7 @@ jobs:
             LOCUST_SHARE_TOKENS
             LOCUST_HOT_DASHBOARD_UID
             LOCUST_HOT_SHARE_TOKEN
+            LOCUST_CONFLICT_DASHBOARD_UID
             LOCUST_CONFLICT_USER_LOGIN
           )
 
@@ -415,6 +446,7 @@ jobs:
             echo "LOCUST_SHARE_TOKENS length=${#LOCUST_SHARE_TOKENS}"
             echo "LOCUST_HOT_DASHBOARD_UID=$LOCUST_HOT_DASHBOARD_UID"
             echo "LOCUST_HOT_SHARE_TOKEN=$LOCUST_HOT_SHARE_TOKEN"
+            echo "LOCUST_CONFLICT_DASHBOARD_UID=$LOCUST_CONFLICT_DASHBOARD_UID"
             echo "LOCUST_CONFLICT_USER_LOGIN=$LOCUST_CONFLICT_USER_LOGIN"
           } | tee perf-results/locust-profile.txt
 
