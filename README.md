@@ -176,9 +176,12 @@ Pytest / Locust
 - Dashboard 摘要缓存命中
 
 ### 性能测试
-- 读场景：订阅列表、分享链接、摘要
+- 热点读：订阅列表、分享链接
 - 写场景：正常创建订阅
 - 并发冲突：重复订阅创建
+- 缓存穿透：不存在 token / 不存在 dashboard 持续读取
+- 缓存击穿：单热点订阅列表 key 反复失效后回源
+- 缓存雪崩：多组热点 subscriptions / share / dashboard_exists 批量失效
 
 ---
 
@@ -256,6 +259,78 @@ python -m src.main prepare
 ```bash
 python -m src.main cleanup
 ```
+
+### 6. 本地运行性能测试场景
+
+先保证服务已经起来：
+
+```bash
+docker compose up -d --build grafana mysql redis dashboard-hub prometheus
+```
+
+然后可以直接用本地脚本跑单个场景，它会自动：
+
+- 生成压测种子数据
+- 执行 Locust
+- 抓取前后指标快照
+- 校验时延阈值
+- 校验业务信号
+
+示例：
+
+```bash
+python perf/run_local_scenario.py --scenario hot_read
+python perf/run_local_scenario.py --scenario write_conflict
+python perf/run_local_scenario.py --scenario cache_penetration
+python perf/run_local_scenario.py --scenario cache_breakdown
+python perf/run_local_scenario.py --scenario cache_avalanche
+```
+
+如果想覆盖默认并发参数，也可以直接改：
+
+```bash
+python perf/run_local_scenario.py --scenario cache_avalanche --users 180 --rate 30 --duration 6m
+```
+
+执行结果会落到 `perf-results/local-<scenario>-<timestamp>/`，重点看这些文件：
+
+- `locust_stats.csv`：吞吐、p95、p99、失败数
+- `metrics-before.json` / `metrics-after.json`：压测前后指标快照
+- `business-signals-summary.json`：业务信号断言汇总
+- `locust-report.html`：Locust HTML 报告
+
+### 7. 三类缓存场景怎么理解
+
+#### 缓存穿透
+这里不是简单重复读同一个不存在 key，而是持续生成新的非法 token 和新的非法 dashboard UID，避免请求被同一个 key“误当成热点”。
+重点观察：
+
+- `share_link` 缓存 miss
+- `dashboard_exists` 缓存 miss
+- `dashboard_by_uid|404` 的上游回源
+- 业务接口 `404` 是否稳定增长
+
+#### 缓存击穿
+这里聚焦单个热点订阅列表 key。先预热，再按固定间隔反复删 `dashhub:subscriptions:{dashboard_uid}`，制造“热点 key 刚失效就被大量并发读打穿”的效果。
+重点观察：
+
+- `subscriptions` 缓存 miss 是否增长
+- miss 之后 hit 是否也继续增长
+- 订阅列表 `200` 是否稳定
+
+#### 缓存雪崩
+这里不是只删一个 key，而是对多组热点 key 分波次一起删：
+
+- `dashhub:subscriptions:*`
+- `dashhub:share:*`
+- `dashhub:dashboard_exists:*`
+
+再配合较短 TTL，让它更接近“同一批缓存集中失效”。
+重点观察：
+
+- 多类缓存 miss 是否同时抬升
+- `dashboard_by_uid|200` 是否明显上升
+- 订阅和分享接口 `200` 是否还能稳住
 
 ---
 
