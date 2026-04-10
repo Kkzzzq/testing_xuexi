@@ -1,0 +1,10 @@
+{
+  "dashboard_uid": "eaeb2b16-40f2-469e-b670-6506281e1462",
+  "title": "dashboard-auto-1775821216366",
+  "url": "/d/eaeb2b16-40f2-469e-b670-6506281e1462/dashboard-auto-1775821216366",
+  "ai_summary": "该仪表板监控系统核心性能，包含CPU、内存和系统负载三个概览面板，均显示当前值、平均值、峰值及变化趋势。",
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "prompt_version": "v1",
+  "source": "ai"
+}
