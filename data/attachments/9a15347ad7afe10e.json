@@ -1,0 +1,10 @@
+{
+  "dashboard_uid": "f2a9f98c-e8d8-480b-af94-2703eb3f7c52",
+  "title": "dashboard-auto-1776652338955",
+  "url": "/d/f2a9f98c-e8d8-480b-af94-2703eb3f7c52/dashboard-auto-1776652338955",
+  "ai_summary": "Dashboard《dashboard-auto-1776652338955》当前包含 3 个面板，核心内容包括：CPU Usage Overview、Memory Usage Overview、System Load Overview。",
+  "provider": "deepseek",
+  "model": "deepseek-chat",
+  "prompt_version": "v1",
+  "source": "fallback"
+}

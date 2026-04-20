@@ -1,0 +1,1 @@
+Dashboard《dashboard-auto-1776652338955》当前包含 3 个面板，核心内容包括：CPU Usage Overview、Memory Usage Overview、System Load Overview。
